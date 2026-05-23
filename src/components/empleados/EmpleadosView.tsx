@@ -13,7 +13,10 @@ import {
   DollarSign, 
   Clock, 
   ShieldCheck,
-  Calendar
+  Calendar,
+  SlidersHorizontal,
+  Layers,
+  Briefcase
 } from "lucide-react";
 
 interface Colaborador {
@@ -60,30 +63,23 @@ const calcularEdadNum = (fechaNacStr?: string): number | null => {
 export default function EmpleadosView() {
   const { empleados = [], setEmpleados } = usePay();
 
-  // --- ESTADOS DE FILTRADO Y SELECCIÓN ---
+  // --- ESTADOS DE FILTRADO, BÚSQUEDA Y AGRUPACIÓN ---
   const [search, setSearch] = useState("");
   const [filterSucursal, setFilterSucursal] = useState("Todos");
+  const [filterJornada, setFilterJornada] = useState("Todos");
+  const [filterPonche, setFilterPonche] = useState("Todos");
+  const [filterExtras, setFilterExtras] = useState("Todos");
+  const [groupBy, setGroupBy] = useState<"Ninguno" | "sucursal" | "cargo" | "jornada">("Ninguno");
+  
   const [selectedEmpleadoId, setSelectedEmpleadoId] = useState<string>("");
   const [showAltaForm, setShowAltaForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
   const [nuevo, setNuevo] = useState({
-    id_reloj: "",
-    nombre: "",
-    cargo: "",
-    sucursal_principal: "Farma Tania I",
-    sucursal_secundaria: "Ninguna",
-    sueldo_base: "27489.57",
-    exento_ponche: false,
-    horas_extras_fijas: false,
-    monto_vales_cxc: "0",
-    fecha_nacimiento: "",
-    fecha_inicio_contrato: "2026-01-01",
-    fecha_fin_contrato: "",
-    cedula: "",
-    cuenta_bancaria: "",
-    banco: "Banreservas",
-    tipo_jornada: "Completa" as "Completa" | "Parcial",
+    id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna",
+    sueldo_base: "27489.57", exento_ponche: false, horas_extras_fijas: false, monto_vales_cxc: "0",
+    fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01", fecha_fin_contrato: "",
+    cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa" as "Completa" | "Parcial",
     horas_jornada_parcial: "8"
   });
 
@@ -99,12 +95,7 @@ export default function EmpleadosView() {
 
   useEffect(() => {
     if (empSel) {
-      setFormFicha({ 
-        tipo_jornada: "Completa", 
-        sucursal_secundaria: "Ninguna",
-        horas_jornada_parcial: 8,
-        ...empSel 
-      });
+      setFormFicha({ tipo_jornada: "Completa", sucursal_secundaria: "Ninguna", horas_jornada_parcial: 8, ...empSel });
       setIsEditing(false);
     }
   }, [selectedEmpleadoId, empSel]);
@@ -122,34 +113,17 @@ export default function EmpleadosView() {
 
   const ejecutarAlta = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!nuevo.id_reloj || !nuevo.nombre || !nuevo.cargo) {
-      return alert("❌ Error: ID, Nombre y Cargo son obligatorios.");
-    }
-
-    if (empleados.some(em => em.id_reloj === nuevo.id_reloj.trim())) {
-      return alert(`⚠️ Conflicto: El ID de Reloj [${nuevo.id_reloj}] ya existe.`);
-    }
+    if (!nuevo.id_reloj || !nuevo.nombre || !nuevo.cargo) return alert("❌ Error: ID, Nombre y Cargo son obligatorios.");
+    if (empleados.some(em => em.id_reloj === nuevo.id_reloj.trim())) return alert(`⚠️ Conflicto: El ID de Reloj ya existe.`);
 
     const creado: Colaborador = {
-      id_reloj: nuevo.id_reloj.trim(),
-      nombre: nuevo.nombre.trim(),
-      cargo: nuevo.cargo.trim(),
-      sucursal_principal: nuevo.sucursal_principal,
-      sucursal_secundaria: nuevo.sucursal_secundaria === "Ninguna" ? undefined : nuevo.sucursal_secundaria,
-      sueldo_base: parseFloat(nuevo.sueldo_base) || 0,
-      exento_ponche: nuevo.exento_ponche,
-      horas_extras_fijas: nuevo.horas_extras_fijas,
-      monto_vales_cxc: parseFloat(nuevo.monto_vales_cxc) || 0,
-      fecha_nacimiento: nuevo.fecha_nacimiento || undefined,
-      fecha_inicio_contrato: nuevo.fecha_inicio_contrato || undefined,
-      fecha_fin_contrato: nuevo.fecha_fin_contrato || undefined,
-      cedula: nuevo.cedula.trim() || undefined,
-      cuenta_bancaria: nuevo.cuenta_bancaria.trim() || undefined,
-      banco: nuevo.banco,
-      tipo_jornada: nuevo.tipo_jornada,
-      horas_jornada_parcial: nuevo.tipo_jornada === "Parcial" ? (parseInt(nuevo.horas_jornada_parcial, 10) || 0) : undefined,
-      estado: "Activo"
+      id_reloj: nuevo.id_reloj.trim(), nombre: nuevo.nombre.trim(), cargo: nuevo.cargo.trim(),
+      sucursal_principal: nuevo.sucursal_principal, sucursal_secundaria: nuevo.sucursal_secundaria === "Ninguna" ? undefined : nuevo.sucursal_secundaria,
+      sueldo_base: parseFloat(nuevo.sueldo_base) || 0, exento_ponche: nuevo.exento_ponche, horas_extras_fijas: nuevo.horas_extras_fijas,
+      monto_vales_cxc: parseFloat(nuevo.monto_vales_cxc) || 0, fecha_nacimiento: nuevo.fecha_nacimiento || undefined,
+      fecha_inicio_contrato: nuevo.fecha_inicio_contrato || undefined, fecha_fin_contrato: nuevo.fecha_fin_contrato || undefined,
+      cedula: nuevo.cedula.trim() || undefined, cuenta_bancaria: nuevo.cuenta_bancaria.trim() || undefined, banco: nuevo.banco,
+      tipo_jornada: nuevo.tipo_jornada, horas_jornada_parcial: nuevo.tipo_jornada === "Parcial" ? (parseInt(nuevo.horas_jornada_parcial, 10) || 0) : undefined, estado: "Activo"
     };
 
     if (setEmpleados) {
@@ -157,10 +131,9 @@ export default function EmpleadosView() {
       setSelectedEmpleadoId(creado.id_reloj);
       setShowAltaForm(false);
       setNuevo({
-        id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna",
-        sueldo_base: "27489.57", exento_ponche: false, horas_extras_fijas: false, monto_vales_cxc: "0",
-        fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01", fecha_fin_contrato: "",
-        cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa", horas_jornada_parcial: "8"
+        id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna", sueldo_base: "27489.57",
+        exento_ponche: false, horas_extras_fijas: false, monto_vales_cxc: "0", fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01",
+        fecha_fin_contrato: "", cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa", horas_jornada_parcial: "8"
       });
       alert("✅ Colaborador registrado con éxito.");
     }
@@ -169,8 +142,9 @@ export default function EmpleadosView() {
   const guardarFicha = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedEmpleadoId && setEmpleados) {
+      const { ...formFichaClean } = formFicha;
       const fichaFormateada = {
-        ...formFicha,
+        ...formFichaClean,
         sueldo_base: parseFloat(String(formFicha.sueldo_base)) || 0,
         monto_vales_cxc: parseFloat(String(formFicha.monto_vales_cxc)) || 0,
         horas_jornada_parcial: formFicha.tipo_jornada === "Parcial" ? (parseInt(String(formFicha.horas_jornada_parcial), 10) || 0) : undefined,
@@ -184,13 +158,39 @@ export default function EmpleadosView() {
     }
   };
 
+  // --- MOTOR FILTRADO AVANZADO ---
   const empleadosFiltrados = useMemo(() => {
     return empleados.filter(e => {
-      const matchSearch = e.nombre.toLowerCase().includes(search.toLowerCase()) || e.id_reloj.includes(search) || e.cargo.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = e.nombre.toLowerCase().includes(search.toLowerCase()) || e.id_reloj.includes(search) || e.cargo.toLowerCase().includes(search.toLowerCase()) || (e.cedula && e.cedula.includes(search));
       const matchSucursal = filterSucursal === "Todos" || e.sucursal_principal === filterSucursal || e.sucursal_secundaria === filterSucursal;
-      return matchSearch && matchSucursal;
+      const matchJornada = filterJornada === "Todos" || e.tipo_jornada === filterJornada;
+      const matchPonche = filterPonche === "Todos" || (filterPonche === "Registra" ? !e.exento_ponche : e.exento_ponche);
+      const matchExtras = filterExtras === "Todos" || e.horas_extras_fijas === (filterExtras === "Autorizadas");
+
+      return matchSearch && matchSucursal && matchJornada && matchPonche && matchExtras;
     });
-  }, [empleados, search, filterSucursal]);
+  }, [empleados, search, filterSucursal, filterJornada, filterPonche, filterExtras]);
+
+  // --- MOTOR DE AGRUPACIÓN DINÁMICA ---
+  const empleadosAgrupados = useMemo(() => {
+    if (groupBy === "Ninguno") {
+      return [{ key: "Todos los Colaboradores", list: empleadosFiltrados }];
+    }
+
+    const mapa = new Map<string, Colaborador[]>();
+
+    empleadosFiltrados.forEach(emp => {
+      let claveGrupo = "No Especificado";
+      if (groupBy === "sucursal") claveGrupo = emp.sucursal_principal;
+      else if (groupBy === "cargo") claveGrupo = emp.cargo;
+      else if (groupBy === "jornada") claveGrupo = emp.tipo_jornada === "Completa" ? "Jornada Completa" : "Jornada Parcial / Reducida";
+
+      if (!mapa.has(claveGrupo)) mapa.set(claveGrupo, []);
+      mapa.get(claveGrupo)!.push(emp);
+    });
+
+    return Array.from(mapa.entries()).map(([key, list]) => ({ key, list }));
+  }, [empleadosFiltrados, groupBy]);
 
   const cardClasses = "bg-white border border-[#E5E7EB] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.05)] font-sans";
   const inputClasses = "w-full pl-9 pr-3.5 py-2 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg text-xs outline-none focus:bg-white focus:border-[#3B82F6] transition-all text-[#1F2937] font-sans disabled:opacity-70";
@@ -199,7 +199,7 @@ export default function EmpleadosView() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6 items-start font-sans text-[#111827]">
       
-      {/* SECCIÓN IZQUIERDA: CONTADORES Y MAESTRO */}
+      {/* SECCIÓN IZQUIERDA */}
       <div className="flex flex-col gap-5 min-w-0">
         
         {/* INDICADORES TOP */}
@@ -234,7 +234,7 @@ export default function EmpleadosView() {
           </div>
         </div>
 
-        {/* BARRA DE HERRAMIENTAS */}
+        {/* BARRA DE BÚSQUEDA Y ALTA */}
         <div className={`${cardClasses} p-4 flex flex-col sm:flex-row gap-3.5 items-center justify-between`}>
           <div className="relative w-full sm:w-72">
             <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><Search className="w-4 h-4" /></span>
@@ -242,11 +242,13 @@ export default function EmpleadosView() {
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto justify-end items-center">
-            <div className="relative min-w-[160px]">
-              <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><MapPin className="w-4 h-4" /></span>
-              <select value={filterSucursal} onChange={(e) => setFilterSucursal(e.target.value)} className={selectClasses}>
-                <option value="Todos">Todas las Sucursales</option>
-                {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+            <div className="relative min-w-[150px]">
+              <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><Layers className="w-4 h-4" /></span>
+              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as any)} className={`${selectClasses} text-slate-800 font-bold bg-slate-50`}>
+                <option value="Ninguno">❌ SIN AGRUPAR</option>
+                <option value="sucursal">📂 AGRUPAR POR SUCURSAL</option>
+                <option value="cargo">📂 AGRUPAR POR PUESTO</option>
+                <option value="jornada">📂 AGRUPAR POR JORNADA</option>
               </select>
             </div>
             
@@ -261,10 +263,48 @@ export default function EmpleadosView() {
           </div>
         </div>
 
-        {/* TABLA MAESTRA REESTRUCTURADA CON LAS COLUMNAS ESPECIFICADAS */}
+        {/* PANEL DE FILTROS AVANZADOS */}
+        <div className={`${cardClasses} p-4 bg-gradient-to-r from-slate-50/50 to-white grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3`}>
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><MapPin className="w-3.5 h-3.5" /></span>
+            <select value={filterSucursal} onChange={(e) => setFilterSucursal(e.target.value)} className={selectClasses}>
+              <option value="Todos">Ubicación: Todas</option>
+              {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><Briefcase className="w-3.5 h-3.5" /></span>
+            <select value={filterJornada} onChange={(e) => setFilterJornada(e.target.value)} className={selectClasses}>
+              <option value="Todos">Régimen: Todos</option>
+              <option value="Completa">Jornada Completa</option>
+              <option value="Parcial">Jornada Parcial</option>
+            </select>
+          </div>
+
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><Clock className="w-3.5 h-3.5" /></span>
+            <select value={filterPonche} onChange={(e) => setFilterPonche(e.target.value)} className={selectClasses}>
+              <option value="Todos">Reloj: Todos</option>
+              <option value="Registra">Poncha Obligatorio</option>
+              <option value="Exento">Exento de Ponches</option>
+            </select>
+          </div>
+
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-[#9CA3AF] pointer-events-none"><SlidersHorizontal className="w-3.5 h-3.5" /></span>
+            <select value={filterExtras} onChange={(e) => setFilterExtras(e.target.value)} className={selectClasses}>
+              <option value="Todos">Horas Extras: Todas</option>
+              <option value="Autorizadas">H.E. Habilitadas</option>
+              <option value="No Autorizadas">Sin Horas Extras</option>
+            </select>
+          </div>
+        </div>
+
+        {/* TABLA MAESTRA CON SOPORTE DE AGRUPACIÓN */}
         <div className={`${cardClasses} overflow-hidden`}>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm table-fixed min-w-[1250px]">
+            <table className="w-full text-left text-sm table-fixed min-w-[1100px]">
               <thead>
                 <tr className="bg-[#F9FAFB] text-[10px] font-bold text-[#6B7280] uppercase tracking-wider border-b border-[#E5E7EB] h-12">
                   <th className="p-3 pl-5 w-20">ID Reloj</th>
@@ -274,53 +314,71 @@ export default function EmpleadosView() {
                   <th className="p-3 w-20 text-center">Edad</th>
                   <th className="p-3 w-52">Sucursales</th>
                   <th className="p-3 text-right w-32">Sueldo Base</th>
-                  <th className="p-3 text-center w-40">Jornada / Ponche</th>
+                  <th className="p-3 text-center w-36">Jornada / Ponche</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E5E7EB] text-[#1F2937]">
-                {empleadosFiltrados.map((n, index) => {
-                  const isSelected = !showAltaForm && selectedEmpleadoId === n.id_reloj;
-                  const edadNum = calcularEdadNum(n.fecha_nacimiento);
-                  
-                  return (
-                    <tr 
-                      key={`${n.id_reloj}-${index}`} 
-                      onClick={() => { setSelectedEmpleadoId(n.id_reloj); setShowAltaForm(false); }}
-                      className={`h-14 cursor-pointer transition-colors ${isSelected ? "bg-[#EFF6FF]/60 font-medium" : "hover:bg-[#F9FAFB]"}`}
-                    >
-                      <td className="p-3 pl-5 font-mono font-bold text-slate-400 text-xs">{n.id_reloj}</td>
-                      <td className="p-3">
-                        <div className="font-bold text-xs uppercase tracking-wide text-slate-900">{n.nombre.toUpperCase()}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{n.cedula || "—"}</div>
-                      </td>
-                      <td className="p-3 text-center font-mono text-xs text-slate-600">{n.fecha_inicio_contrato || "—"}</td>
-                      <td className="p-3 text-center font-mono text-xs text-slate-600">
-                        {n.fecha_fin_contrato ? <span className="text-amber-600">{n.fecha_fin_contrato}</span> : <span className="text-slate-400">Indefinido</span>}
-                      </td>
-                      <td className="p-3 text-center font-mono text-xs font-semibold text-slate-700">{edadNum !== null ? `${edadNum}ª` : "—"}</td>
-                      <td className="p-3 text-[11px] text-slate-600">
-                        <div className="font-semibold uppercase text-slate-800 truncate">{n.sucursal_principal}</div>
-                        {n.sucursal_secundaria && (
-                          <div className="text-[9px] text-blue-600 font-medium mt-0.5 truncate">SEC: {n.sucursal_secundaria.toUpperCase()}</div>
-                        )}
-                      </td>
-                      <td className="p-3 text-right font-mono text-xs font-bold text-slate-700">{formatMoneda(n.sueldo_base)}</td>
-                      <td className="p-3 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase border ${n.tipo_jornada === "Parcial" ? "bg-purple-50 border-purple-200 text-purple-700" : "bg-slate-50 border-slate-200 text-slate-700"}`}>
-                            {n.tipo_jornada === "Parcial" ? `${n.horas_jornada_parcial}h Diarias` : "Completa"}
-                          </span>
-                          <div className="inline-flex gap-1 mt-0.5">
-                            <span className={`text-[8px] font-bold px-1 rounded ${n.exento_ponche ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
-                              {n.exento_ponche ? "EXENTO" : "REGISTRA"}
-                            </span>
-                            {n.horas_extras_fijas && <span className="text-[8px] bg-emerald-50 text-emerald-700 font-bold px-1 rounded">H.E.</span>}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {empleadosAgrupados.map((grupo) => (
+                  <React.Fragment key={grupo.key}>
+                    {groupBy !== "Ninguno" && (
+                      <tr className="bg-slate-100/70 h-8 font-sans">
+                        <td colSpan={8} className="p-2 pl-5 text-[10px] font-extrabold text-slate-700 uppercase tracking-widest bg-slate-50 border-y border-slate-200">
+                          {grupo.key} <span className="text-blue-600 font-mono ml-1.5 bg-blue-50 px-1.5 py-0.5 rounded-full border border-blue-100">{grupo.list.length} Colaboradores</span>
+                        </td>
+                      </tr>
+                    )}
+                    
+                    {grupo.list.length === 0 ? (
+                      <tr className="h-12"><td colSpan={8} className="p-3 text-center text-slate-400 italic text-xs">Ningún colaborador coincide con los filtros aplicados en este bloque.</td></tr>
+                    ) : (
+                      grupo.list.map((n, index) => {
+                        const isSelected = !showAltaForm && selectedEmpleadoId === n.id_reloj;
+                        const edadNum = calcularEdadNum(n.fecha_nacimiento);
+                        
+                        return (
+                          <tr 
+                            key={`${n.id_reloj}-${index}`} 
+                            onClick={() => { setSelectedEmpleadoId(n.id_reloj); setShowAltaForm(false); }}
+                            className={`h-14 cursor-pointer transition-colors ${isSelected ? "bg-[#EFF6FF]/60 font-medium" : "hover:bg-white hover:bg-[#F9FAFB]"}`}
+                          >
+                            <td className="p-3 pl-5 font-mono font-bold text-slate-400 text-xs">{n.id_reloj}</td>
+                            <td className="p-3">
+                              <div className="font-bold text-xs uppercase tracking-wide text-slate-900">{n.nombre.toUpperCase()}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{n.cedula || "—"}</div>
+                            </td>
+                            <td className="p-3 text-center font-mono text-xs text-slate-600">{n.fecha_inicio_contrato || "—"}</td>
+                            <td className="p-3 text-center font-mono text-xs text-slate-600">
+                              {n.fecha_fin_contrato ? <span className="text-amber-600">{n.fecha_fin_contrato}</span> : <span className="text-slate-400">Indefinido</span>}
+                            </td>
+                            <td className="p-3 text-center font-mono text-xs font-semibold text-slate-700">{edadNum !== null ? `${edadNum}ª` : "—"}</td>
+                            
+                            <td className="p-3 text-[11px] text-slate-600">
+                              <div className="font-semibold uppercase text-slate-800 truncate">{n.sucursal_principal}</div>
+                              {n.sucursal_secundaria && n.sucursal_secundaria !== "Ninguna" && (
+                                <div className="text-[9px] text-blue-600 font-medium mt-0.5 truncate">SEC: {n.sucursal_secundaria.toUpperCase()}</div>
+                              )}
+                            </td>
+
+                            <td className="p-3 text-right font-mono text-xs font-bold text-slate-700">{formatMoneda(n.sueldo_base)}</td>
+                            
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                {n.tipo_jornada === "Parcial" && (
+                                  <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase border bg-purple-50 border-purple-100 text-purple-700">
+                                    {n.horas_jornada_parcial}h
+                                  </span>
+                                )}
+                                {!n.exento_ponche && (
+                                  <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" title="Requiere marcas de reloj biométrico" />
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
@@ -456,7 +514,6 @@ export default function EmpleadosView() {
             </div>
           </form>
         ) : empSel ? (
-          /* EXPEDIENTE DETALLADO DE COLABORADOR SELECCIONADO */
           <form onSubmit={guardarFicha} className="flex flex-col gap-3.5 text-xs">
             <div className="border-b border-[#E5E7EB] pb-3 flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center font-black shadow-md">
@@ -506,6 +563,7 @@ export default function EmpleadosView() {
               </div>
             </div>
 
+            {/* 🛡️ CORREGIDO AQUÍ: Renderizado del selector de sucursales con mapeo limpio sin variables rotas */}
             <div className="grid grid-cols-2 gap-2">
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wider pl-1">Sucursal Principal</label>
@@ -522,7 +580,6 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* EXPEDIENTE BANCARIO */}
             <div className="bg-slate-50 border p-3 rounded-xl flex flex-col gap-2">
               <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block border-b pb-1">Cuenta de Depósito Quincenal</span>
               <div className="grid grid-cols-2 gap-2">
@@ -542,7 +599,6 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* JORNADA LABORAL DIARIA */}
             <div className="bg-purple-50/40 border border-purple-100 p-3 rounded-xl flex flex-col gap-2">
               <span className="text-[9px] font-bold text-purple-700 uppercase tracking-wider block border-b border-purple-100 pb-1">Cómputo Horario Legal Diario</span>
               <div className="grid grid-cols-2 gap-2">
@@ -560,7 +616,6 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* SECCIÓN DE FECHAS DE CONTRATACIÓN */}
             <div className="grid grid-cols-3 gap-2 bg-[#F9FAFB] p-3 rounded-xl border border-[#E5E7EB]">
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-bold text-[#6B7280] uppercase tracking-wider">Sueldo Mensual</label>
