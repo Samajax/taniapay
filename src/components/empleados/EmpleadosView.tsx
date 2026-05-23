@@ -215,7 +215,7 @@ export default function EmpleadosView() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`${cardClasses} p-5 flex items-center justify-between relative overflow-hidden bg-gradient-to-br from-white to-slate-50/30`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Plantilla</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Empleados</span>
               <span className="text-2xl font-bold text-slate-800 font-sans tracking-tight mt-1 block">{metricasGlobales.activos}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50/60 text-emerald-600 flex items-center justify-center border border-emerald-100/50"><Users className="w-4 h-4" /></div>
@@ -223,7 +223,7 @@ export default function EmpleadosView() {
           
           <div className={`${cardClasses} p-5 flex items-center justify-between relative overflow-hidden bg-gradient-to-br from-white to-slate-50/30`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Exentos</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Exentos de Ponche</span>
               <span className="text-2xl font-bold text-slate-700 font-sans tracking-tight mt-1 block">{metricasGlobales.exentos}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><ShieldCheck className="w-4 h-4" /></div>
@@ -241,7 +241,7 @@ export default function EmpleadosView() {
           <div className="bg-[#2B4C5E] border border-[#233F4E] rounded-2xl p-5 flex items-center justify-between shadow-[0_8px_30px_rgba(35,63,78,0.15)] relative overflow-hidden">
             <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none"></div>
             <div>
-              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Nómina Base</span>
+              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Nómina Bruta</span>
               <span className="text-sm font-bold text-white font-mono mt-2 block tracking-wide">{formatMoneda(metricasGlobales.nominaTeoricaMensual)}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-white/10 text-emerald-400 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
@@ -272,7 +272,7 @@ export default function EmpleadosView() {
               className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${showAltaForm ? "bg-red-50 text-red-600 hover:bg-red-100/70" : "bg-[#42A873] text-white hover:bg-[#399665] shadow-sm"}`}
             >
               {showAltaForm ? <X className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-              {showAltaForm ? "Cancelar" : "Nuevo Ingreso"}
+              {showAltaForm ? "Cancelar" : "Agregar Empleado"}
             </button>
           </div>
         </div>
@@ -322,12 +322,12 @@ export default function EmpleadosView() {
               <thead>
                 <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 h-12">
                   <th className="p-3 pl-6 w-20">ID Reloj</th>
-                  <th className="p-3 w-56">Colaborador / Puesto</th>
+                  <th className="p-3 w-56">Colaborador</th>
                   <th className="p-3 w-28 text-center">Fecha Inicio</th>
                   <th className="p-3 w-28 text-center">Fecha Fin</th>
                   <th className="p-3 w-16 text-center">Edad</th>
                   <th className="p-3 w-48">Sucursales</th>
-                  <th className="p-3 text-right w-28">Monto H.E.</th>
+                  <th className="p-3 text-right w-28">Horas Extras</th>
                   <th className="p-3 text-right w-30">Sueldo Base</th>
                   <th className="p-3 text-center w-36">Jornada / Ponche</th>
                 </tr>
