@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { usePay } from "@/context/PayContext";
 import { SUCURSALES_DISPONIBLES } from "@/data/mockData";
 import { 
@@ -81,6 +81,38 @@ export default function EmpleadosView() {
   const [selectedEmpleadoId, setSelectedEmpleadoId] = useState<string>("");
   const [showAltaForm, setShowAltaForm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // --- LÓGICA DE CONTROL DE ANCHO AJUSTABLE (RESIZABLE) ---
+  const [panelWidth, setPanelWidth] = useState(430); // Ancho inicial de la ficha en px
+  const isResizing = useRef(false);
+
+  const startResizing = React.useCallback((mouseDownEvent: React.MouseEvent) => {
+    mouseDownEvent.preventDefault();
+    isResizing.current = true;
+  }, []);
+
+  const stopResizing = React.useCallback(() => {
+    isResizing.current = false;
+  }, []);
+
+  const resize = React.useCallback((mouseMoveEvent: MouseEvent) => {
+    if (!isResizing.current) return;
+    // Calcular el nuevo ancho restando la posición X del mouse del ancho total de la ventana
+    const nextWidth = window.innerWidth - mouseMoveEvent.clientX - 32; 
+    // Establecer límites mínimos y máximos para el panel de la ficha
+    if (nextWidth > 340 && nextWidth < 700) {
+      setPanelWidth(nextWidth);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", resize);
+    window.addEventListener("mouseup", stopResizing);
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [resize, stopResizing]);
 
   const [nuevo, setNuevo] = useState({
     id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna",
@@ -200,48 +232,47 @@ export default function EmpleadosView() {
     return Array.from(mapa.entries()).map(([key, list]) => ({ key, list }));
   }, [empleadosFiltrados, groupBy]);
 
-  // --- TOKENS DE DISEÑO INSPIRADOS EN LA IMAGEN (Menta, Acero y Pizarra) ---
   const cardClasses = "bg-white border border-slate-100/80 rounded-2xl shadow-[0_4px_20px_rgba(241,245,249,0.6)]";
   const inputClasses = "w-full pl-9 pr-3.5 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs outline-none focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700 disabled:opacity-60 disabled:bg-slate-50/50";
   const selectClasses = "w-full pl-9 pr-8 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs font-medium outline-none cursor-pointer focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700 appearance-none disabled:opacity-60 disabled:bg-slate-50/50";
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr_430px] gap-6 items-start text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen">
+    // 🎛️ Cambiado grid-cols por flex para permitir el redimensionamiento dinámico del layout
+    <div className="flex gap-1 text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none overflow-hidden">
       
-      {/* SECCIÓN IZQUIERDA: MAESTRO E INDICADORES */}
-      <div className="flex flex-col gap-6 min-w-0">
+      {/* SECCIÓN IZQUIERDA: MAESTRO E INDICADORES (Ocupa el espacio restante fluido) */}
+      <div className="flex-1 flex flex-col gap-6 min-w-0 pr-2">
         
-        {/* INDICADORES TOP (Estilo Dashboard de Referencia) */}
+        {/* INDICADORES TOP */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${cardClasses} p-5 flex items-center justify-between relative overflow-hidden bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Empleados</span>
-              <span className="text-2xl font-bold text-slate-800 font-sans tracking-tight mt-1 block">{metricasGlobales.activos}</span>
+              <span className="text-[10px] font-bold text-slate-400 tracking-widest block">Plantilla</span>
+              <span className="text-2xl font-bold text-slate-800 tracking-tight mt-1 block">{metricasGlobales.activos}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50/60 text-emerald-600 flex items-center justify-center border border-emerald-100/50"><Users className="w-4 h-4" /></div>
           </div>
           
-          <div className={`${cardClasses} p-5 flex items-center justify-between relative overflow-hidden bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Exentos de Ponche</span>
-              <span className="text-2xl font-bold text-slate-700 font-sans tracking-tight mt-1 block">{metricasGlobales.exentos}</span>
+              <span className="text-[10px] font-bold text-slate-400 tracking-widest block">Exentos</span>
+              <span className="text-2xl font-bold text-slate-700 tracking-tight mt-1 block">{metricasGlobales.exentos}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><ShieldCheck className="w-4 h-4" /></div>
           </div>
 
-          <div className={`${cardClasses} p-5 flex items-center justify-between relative overflow-hidden bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Horas Extras</span>
-              <span className="text-2xl font-bold text-slate-700 font-sans tracking-tight mt-1 block">{metricasGlobales.conHorasExtras}</span>
+              <span className="text-[10px] font-bold text-slate-400 tracking-widest block">Horas Extras</span>
+              <span className="text-2xl font-bold text-slate-700 tracking-tight mt-1 block">{metricasGlobales.conHorasExtras}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><Clock className="w-4 h-4" /></div>
           </div>
 
-          {/* Tarjeta de Énfasis en Color Oscuro Pizarra Contable */}
           <div className="bg-[#2B4C5E] border border-[#233F4E] rounded-2xl p-5 flex items-center justify-between shadow-[0_8px_30px_rgba(35,63,78,0.15)] relative overflow-hidden">
             <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none"></div>
             <div>
-              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Nómina Bruta</span>
+              <span className="text-[10px] font-bold text-slate-300/80 tracking-widest block">Nómina Base</span>
               <span className="text-sm font-bold text-white font-mono mt-2 block tracking-wide">{formatMoneda(metricasGlobales.nominaTeoricaMensual)}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-white/10 text-emerald-400 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
@@ -272,7 +303,7 @@ export default function EmpleadosView() {
               className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 ${showAltaForm ? "bg-red-50 text-red-600 hover:bg-red-100/70" : "bg-[#42A873] text-white hover:bg-[#399665] shadow-sm"}`}
             >
               {showAltaForm ? <X className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-              {showAltaForm ? "Cancelar" : "Agregar Empleado"}
+              {showAltaForm ? "Cancelar" : "Nuevo Ingreso"}
             </button>
           </div>
         </div>
@@ -322,12 +353,12 @@ export default function EmpleadosView() {
               <thead>
                 <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 h-12">
                   <th className="p-3 pl-6 w-20">ID Reloj</th>
-                  <th className="p-3 w-56">Colaborador</th>
+                  <th className="p-3 w-56">Colaborador / Puesto</th>
                   <th className="p-3 w-28 text-center">Fecha Inicio</th>
                   <th className="p-3 w-28 text-center">Fecha Fin</th>
                   <th className="p-3 w-16 text-center">Edad</th>
                   <th className="p-3 w-48">Sucursales</th>
-                  <th className="p-3 text-right w-28">Horas Extras</th>
+                  <th className="p-3 text-right w-28">Monto H.E.</th>
                   <th className="p-3 text-right w-30">Sueldo Base</th>
                   <th className="p-3 text-center w-36">Jornada / Ponche</th>
                 </tr>
@@ -412,8 +443,18 @@ export default function EmpleadosView() {
         </div>
       </div>
 
-      {/* PANEL EXPEDIENTE LATERAL (Estilo Ficha Financiera Asiento de la Derecha) */}
-      <div className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto border-slate-200/50`}>
+      {/* 🛠️ CONTROLLER DE ARRASTRE (Grip invisible / área interactiva) */}
+      <div 
+        onMouseDown={startResizing}
+        className="w-2.5 hover:w-3 bg-transparent hover:bg-slate-200/60 active:bg-slate-300 rounded-full cursor-col-resize transition-all self-stretch shrink-0 mx-0.5 relative z-10"
+        title="Arrastra para ajustar el tamaño de los paneles"
+      />
+
+      {/* PANEL EXPEDIENTE LATERAL (Su ancho ahora está controlado por el estado panelWidth) */}
+      <div 
+        style={{ width: `${panelWidth}px` }}
+        className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto border-slate-200/50 shrink-0 select-text`}
+      >
         {showAltaForm ? (
           /* FORMULARIO DE ALTA */
           <form onSubmit={ejecutarAlta} className="flex flex-col gap-4 text-xs">
@@ -460,7 +501,7 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            <div className="border border-slate-100 p-3 rounded-2xl bg-slate-50/50 flex flex-col gap-2.5">
+            <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Dispersión de Nómina</span>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
@@ -477,7 +518,7 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            <div className="border border-slate-100 p-3 rounded-2xl bg-slate-50/50 flex flex-col gap-2.5">
+            <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Estructura Horaria</span>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
@@ -544,10 +585,9 @@ export default function EmpleadosView() {
             </div>
           </form>
         ) : empSel ? (
-          /* EXPEDIENTE DETALLADO (Estilo widget lateral unificado) */
+          /* EXPEDIENTE DETALLADO */
           <form onSubmit={guardarFicha} className="flex flex-col gap-4 text-xs">
             
-            {/* CABECERA EXPEDIENTE */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
               <div className="min-w-0">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Expediente</span>
@@ -562,7 +602,6 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* CONTROL DE EDICIÓN PREMIUM */}
             <div className="w-full">
               {!isEditing ? (
                 <button type="button" onClick={() => setIsEditing(true)} className="w-full border border-slate-200 text-slate-600 bg-slate-50/40 hover:bg-slate-50 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
@@ -576,7 +615,6 @@ export default function EmpleadosView() {
               )}
             </div>
 
-            {/* BLOQUES DE CAMPOS */}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
@@ -638,7 +676,7 @@ export default function EmpleadosView() {
             </div>
 
             {/* JORNADA LABORAL DIARIA */}
-            <div className="border border-slate-100 rounded-2xl p-3 bg-slate-50/50 space-y-2">
+            <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Régimen Operativo</span>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
@@ -690,7 +728,6 @@ export default function EmpleadosView() {
                   <input type="checkbox" disabled={!isEditing} className="w-4 h-4 rounded-lg border-slate-300 accent-[#42A873]" checked={isEditing ? formFicha.horas_extras_fijas : empSel.horas_extras_fijas} onChange={e => setFormFicha({...formFicha, horas_extras_fijas: e.target.checked})} />
                 </label>
                 
-                {/* Despliegue de captura H.E en edición */}
                 {(isEditing ? formFicha.horas_extras_fijas : empSel.horas_extras_fijas) && (
                   <div className="pt-1 flex items-center justify-between gap-4 animate-fadeIn">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">Cantidad quincenal:</span>
