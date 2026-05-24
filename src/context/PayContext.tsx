@@ -1,15 +1,18 @@
 "use client";
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { Empleado, AsistenciaRecord, EMPLEADOS_INICIALES, ASISTENCIA_INICIAL, CONFIG_SISTEMA } from "@/data/mockData";
 
 export interface Incidencia {
   id_incidencia: string;
   id_reloj: string;
-  tipo: "Permiso" | "Licencia médica" | "Vacaciones" | "Sanción Disciplinaria";
+  tipo: "Permiso" | "Licencia médica" | "Maternidad" | "Cuentas por Cobrar (CXC)" | "Vales / Faltantes de caja";
   fecha_inicio: string;
   fecha_fin: string;
-  horas_permiso?: number; // Para evaluar la regla de las 4.5 horas
-  ya_pagada_adelantada: boolean; // Control estricto de flujo de efectivo de vacaciones
+  horas_permiso?: number; 
+  monto?: number;
+  cuotas?: number;
+  tiene_cobertura?: boolean;
+  id_reloj_cubre?: string;
   observaciones: string;
   fecha_registro: string;
 }
@@ -29,7 +32,6 @@ interface PayContextType {
   fechaSistema: string;
   periodoInicio: string;
   periodoFin: string;
-  // --- NUEVOS ESTADOS PARA INTEGRACIÓN DE LA ETAPA 4 ---
   nominaAprobada: boolean;
   setNominaAprobada: (aprobada: boolean) => void;
   bhdArchivoTexto: string;
@@ -38,28 +40,16 @@ interface PayContextType {
 
 const PayContext = createContext<PayContextType | undefined>(undefined);
 
-// MOCKS INICIALES DE INCIDENCIAS PARA VALIDAR REGLAS DE NEGOCIO
 const INCIDENCIAS_INICIALES: Incidencia[] = [
   {
     id_incidencia: "INC-01",
-    id_reloj: "102",
+    id_reloj: "T1040",
     tipo: "Permiso",
     fecha_inicio: "2026-05-16",
     fecha_fin: "2026-05-16",
-    horas_permiso: 3, // Menor a 4.5 horas -> No descuenta nada
-    ya_pagada_adelantada: false,
+    horas_permiso: 3, 
     observaciones: "CITA MÉDICA EN EL HOMS POR LA MAÑANA",
     fecha_registro: "2026-05-14"
-  },
-  {
-    id_incidencia: "INC-02",
-    id_reloj: "101",
-    tipo: "Vacaciones",
-    fecha_inicio: "2026-05-16",
-    fecha_fin: "2026-05-31",
-    ya_pagada_adelantada: true, // Provoca descuento quincenal porque ya cobró adelantado
-    observaciones: "DISFRUTE DE PERIODO ANUAL CONSTITUCIONAL",
-    fecha_registro: "2026-05-01"
   }
 ];
 
@@ -67,9 +57,20 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [empleados, setEmpleados] = useState<Empleado[]>(EMPLEADOS_INICIALES);
   const [asistencia, setAsistencia] = useState<AsistenciaRecord[]>(ASISTENCIA_INICIAL);
-  const [incidencias, setIncidencias] = useState<Incidencia[]>(INCIDENCIAS_INICIALES);
   
-  // --- ESTADOS GLOBALES DE NÓMINA (ETAPA 4) ---
+  // --- CORE FIX: ESTADO PERSISTENTE LOCAL ---
+  const [incidencias, setIncidenciasState] = useState<Incidencia[]>([]);
+
+  // Cargar datos al arrancar
+  useEffect(() => {
+    const backup = localStorage.getItem("taniapay_local_incidencias");
+    if (backup) {
+      setIncidenciasState(JSON.parse(backup));
+    } else {
+      setIncidenciasState(INCIDENCIAS_INICIALES);
+    }
+  }, []);
+
   const [nominaAprobada, setNominaAprobada] = useState<boolean>(false);
   const [bhdArchivoTexto, setBhdArchivoTexto] = useState<string>("");
 
@@ -101,12 +102,21 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
     );
   };
 
+  // Enlazamos funciones con localStorage para que no mueran al refrescar Next.js
   const addIncidencia = (nueva: Incidencia) => {
-    setIncidencias((prev) => [nueva, ...prev]);
+    setIncidenciasState((prev) => {
+      const actualizadas = [nueva, ...prev];
+      localStorage.setItem("taniapay_local_incidencias", JSON.stringify(actualizadas));
+      return actualizadas;
+    });
   };
 
   const eliminarIncidencia = (id: string) => {
-    setIncidencias((prev) => prev.filter(i => i.id_incidencia !== id));
+    setIncidenciasState((prev) => {
+      const filtradas = prev.filter(i => i.id_incidencia !== id);
+      localStorage.setItem("taniapay_local_incidencias", JSON.stringify(filtradas));
+      return filtradas;
+    });
   };
 
   return (
@@ -117,7 +127,6 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
       fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
       periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
       periodoFin: CONFIG_SISTEMA.QUINCENA_FIN,
-      // --- EXPOSICIÓN DE LOS NUEVOS ATRIBUTOS ---
       nominaAprobada, setNominaAprobada,
       bhdArchivoTexto, setBhdArchivoTexto
     }}>

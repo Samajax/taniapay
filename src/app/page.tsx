@@ -29,6 +29,7 @@ export default function Home() {
           {activeTab === "empleados" && <EmpleadosView />} {/* <-- Renderiza el maestro de personal real */}
           {activeTab === "ponches" && <PonchesView />} {/* <-- Renderización de Etapa 3 */}
           {activeTab === "incidencias" && <IncidenciasView />}
+
           {activeTab === "nomina" && <NominaView />}
 
 

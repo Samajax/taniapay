@@ -1,48 +1,20 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { usePay } from "@/context/PayContext";
+import { usePay, Incidencia } from "@/context/PayContext";
 import { SUCURSALES_DISPONIBLES } from "@/data/mockData";
 import { 
   Search, 
   Plus, 
   X, 
-  Pencil, 
   Save, 
   Clock, 
-  MapPin, 
-  FileText, 
-  Palmtree, 
-  UserCheck, 
-  DollarSign, 
-  Receipt, 
-  FileSpreadsheet, 
-  TrendingDown, 
-  ShieldAlert,
-  CheckCircle,
+  Pencil,
   Trash2,
   AlertTriangle,
-  UserPlus
+  ClipboardList,
+  User,
+  DollarSign
 } from "lucide-react";
-
-interface NovedadIncidencia {
-  id: string;
-  id_reloj: string;
-  tipo: 
-    | "Permiso"
-    | "Licencias médicas"
-    | "Maternidad"
-    | "Cuentas por Cobrar (CXC)" 
-    | "Vales / Faltantes de caja"
-    | "Vacaciones"; // Mantenido exclusivamente para la pestaña de Vacaciones de ley
-  fecha_inicio: string;
-  cantidad_dias?: number;
-  tiene_cobertura?: boolean;
-  id_reloj_cubre?: string;
-  monto?: number;       
-  cuotas?: number;      
-  comentario: string;
-  estado: "Procesado" | "Pendiente Aplicación";
-}
 
 function formatMonto(val: number) {
   return "RD$ " + Number(val || 0).toLocaleString("es-DO", {
@@ -67,27 +39,15 @@ const calcularFechaFinLaborable = (fechaInicioStr: string, diasLaborables: numbe
   return fecha.toISOString().split("T")[0];
 };
 
-const obtenerDiasVacacionesPorLey = (fechaInicioContratoStr?: string): number => {
-  if (!fechaInicioContratoStr) return 14;
-  const inicio = new Date(fechaInicioContratoStr + "T00:00:00");
-  const hoy = new Date();
-  let anios = hoy.getFullYear() - inicio.getFullYear();
-  const mes = hoy.getMonth() - inicio.getMonth();
-  if (mes < 0 || (mes === 0 && hoy.getDate() < inicio.getDate())) {
-    anios--;
-  }
-  return anios > 5 ? 18 : 14;
-};
-
 export default function IncidenciasView() {
   const { 
     empleados = [], 
     incidencias = [], 
-    setIncidencias, 
-    fechaSistema 
+    addIncidencia, 
+    eliminarIncidencia, 
+    fechaSistema = "2026-05-24" 
   } = usePay();
 
-  const [activeTab, setActiveTab] = useState<"general" | "vacaciones">("general");
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState("Todos");
   const [filterSucursal, setFilterSucursal] = useState("Todos");
@@ -96,40 +56,28 @@ export default function IncidenciasView() {
   const [isEditing, setIsEditing] = useState(false);
   const [showAltaForm, setShowAltaForm] = useState(false);
 
-  // --- CONTROL DE ANCHO AJUSTABLE ---
-  const [panelWidth, setPanelWidth] = useState(440); 
+  // --- PANEL RESIZABLE ---
+  const [panelWidth, setPanelWidth] = useState(420); 
   const isResizing = useRef(false);
 
-  const startResizing = React.useCallback((mouseDownEvent: React.MouseEvent) => {
-    mouseDownEvent.preventDefault();
-    isResizing.current = true;
-  }, []);
-
-  const stopResizing = React.useCallback(() => {
-    isResizing.current = false;
-  }, []);
-
-  const resize = React.useCallback((mouseMoveEvent: MouseEvent) => {
+  const startResizing = React.useCallback((e: React.MouseEvent) => { e.preventDefault(); isResizing.current = true; }, []);
+  const stopResizing = React.useCallback(() => { isResizing.current = false; }, []);
+  const resize = React.useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
-    const nextWidth = window.innerWidth - mouseMoveEvent.clientX - 32; 
-    if (nextWidth > 360 && nextWidth < 750) {
-      setPanelWidth(nextWidth);
-    }
+    const nextWidth = window.innerWidth - e.clientX - 32; 
+    if (nextWidth > 380 && nextWidth < 700) setPanelWidth(nextWidth);
   }, []);
 
   useEffect(() => {
-    window.addEventListener("mousemove", resize);
-    window.addEventListener("mouseup", stopResizing);
-    return () => {
-      window.removeEventListener("mousemove", resize);
-      window.removeEventListener("mouseup", stopResizing);
-    };
+    window.addEventListener("mousemove", resize); window.addEventListener("mouseup", stopResizing);
+    return () => { window.removeEventListener("mousemove", resize); window.removeEventListener("mouseup", stopResizing); };
   }, [resize, stopResizing]);
 
+  // Captura de datos
   const [nuevo, setNuevo] = useState({
-    id_reloj: "12", 
-    tipo: "Permiso" as NovedadIncidencia["tipo"],
-    fecha_inicio: fechaSistema || "2026-05-21",
+    id_reloj: "", 
+    tipo: "Permiso" as Incidencia["tipo"],
+    fecha_inicio: fechaSistema,
     cantidad_dias: "1",
     tiene_cobertura: false,
     id_reloj_cubre: "Ninguno",
@@ -138,334 +86,285 @@ export default function IncidenciasView() {
     comentario: ""
   });
 
-  const [formFicha, setFormFicha] = useState<Partial<NovedadIncidencia>>({});
+  useEffect(() => {
+    if (empleados.length > 0 && !nuevo.id_reloj) {
+      setNuevo(prev => ({ ...prev, id_reloj: empleados[0].id_reloj }));
+    }
+  }, [empleados, nuevo.id_reloj]);
+
+  const [formFicha, setFormFicha] = useState<Partial<Incidencia>>({});
   
-  const novSel = useMemo(() => incidencias.find((n) => n.id === selectedId), [incidencias, selectedId]);
+  const novSel = useMemo(() => {
+    return incidencias.find((n) => n.id_incidencia === selectedId && n.tipo !== "Vacaciones");
+  }, [incidencias, selectedId]);
+
   const empAsociado = novSel ? empleados.find(e => e.id_reloj === novSel.id_reloj) : null;
 
-  useEffect(() => {
-    if (activeTab === "vacaciones") {
-      const colab = empleados.find(e => e.id_reloj === nuevo.id_reloj);
-      if (colab) {
-        const diasDerecho = obtenerDiasVacacionesPorLey(colab.fecha_inicio_contrato);
-        setNuevo(prev => ({ ...prev, cantidad_dias: String(diasDerecho) }));
-      }
-    }
-  }, [nuevo.id_reloj, activeTab, empleados]);
-
-  useEffect(() => {
-    const primerasDeTab = incidencias.filter(n => activeTab === "vacaciones" ? n.tipo === "Vacaciones" : n.tipo !== "Vacaciones");
-    if (primerasDeTab.length > 0) {
-      setSelectedId(primerasDeTab[0].id);
-    } else {
-      setSelectedId("");
-    }
-    setShowAltaForm(false);
-  }, [activeTab, incidencias.length]); 
-
-  useEffect(() => {
-    if (novSel) {
-      setFormFicha({ ...novSel });
-      setIsEditing(false);
-    }
+  useEffect(() => { 
+    if (novSel) { 
+      setFormFicha({ ...novSel }); 
+      setIsEditing(false); 
+    } 
   }, [selectedId, novSel]);
 
-  // 🧮 LÓGICA DE NEGOCIO Y CÁLCULO DE INCIDENCIAS
-  const analizarImpactoIncidencia = (idReloj: string, tipo: NovedadIncidencia["tipo"], dias: number = 1, montoTotal: number = 0, cuotas: number = 1, tieneCobertura: boolean = false) => {
+  const analizarImpactoIncidencia = (idReloj: string, tipo: Incidencia["tipo"], dias: number = 1, montoTotal: number = 0, cuotas: number = 1, tieneCobertura: boolean = false) => {
     const empleado = empleados.find(e => e.id_reloj === idReloj);
-    const sueldoBaseEmpleado = empleado ? Number(empleado.sueldo_base) : 27489.60;
+    const sueldoBaseEmpleado = empleado ? Number(empleado.sueldo_base || empleado.sueldo) : 27489.60;
     const valorDiaDinamico = sueldoBaseEmpleado / 23.83;
+    const sueldoQuincenal = sueldoBaseEmpleado / 2;
+
+    let montoDescuento = 0;
+    let label = "";
 
     switch (tipo) {
       case "Permiso":
-        if (tieneCobertura) {
-          return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Permiso Cubierto: No aplica descuento de salario" };
-        } else {
-          return { afectaTSS: true, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: `Permiso no cubierto: Descuento de ${dias} día(s) basado en salario` };
-        }
+        montoDescuento = tieneCobertura ? 0 : dias * valorDiaDinamico;
+        label = tieneCobertura ? "Turno cubierto por reemplazo." : `Deducción de ${dias} día(s).`;
+        break;
       case "Vales / Faltantes de caja":
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: montoTotal, label: "Descuento total e inmediato en la misma quincena" };
+        montoDescuento = montoTotal; 
+        label = "Descuento por faltante quincenal.";
+        break;
       case "Cuentas por Cobrar (CXC)":
-        const calculoCuota = cuotas > 0 ? (montoTotal / cuotas) : montoTotal;
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: calculoCuota, label: `Cuota quincenal fija amortizada en ${cuotas} pagos` };
-      case "Vacaciones":
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: "Adelanto financiero por vacaciones liquidadas" };
-      case "Licencias médicas":
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Licencia Médica Aprobada: Sueldo base protegido por SISALRIL" };
-      case "Maternidad":
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Licencia de Parto: Sueldo íntegro (Sisalril reembolsa a empresa)" };
-      default:
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Exención Contable Regular" };
-    }
-  };
-
-  const resumenes = useMemo(() => {
-    let vacs = 0, asistencias = 0, totalCXC = 0, totalFaltantes = 0;
-    incidencias.forEach(n => {
-      const montoNum = Number(n.monto) || 0;
-      if (n.tipo === "Vacaciones") vacs++;
-      else if (["Permiso", "Licencias médicas", "Maternidad"].includes(n.tipo)) asistencias++;
-      else if (n.tipo === "Cuentas por Cobrar (CXC)") totalCXC += montoNum;
-      else if (n.tipo === "Vales / Faltantes de caja") totalFaltantes += montoNum;
-    });
-    return { vacs, asistencias, totalCXC, totalFaltantes };
-  }, [incidencias]);
-
-  const ejecutarAlta = (e: React.FormEvent) => {
-    e.preventDefault();
-    const tipoFinal = activeTab === "vacaciones" ? "Vacaciones" : nuevo.tipo;
-
-    if (tipoFinal === "Permiso" && nuevo.tiene_cobertura && nuevo.id_reloj_cubre === "Ninguno") {
-      return alert("❌ Error: Si el permiso es cubierto, debe seleccionar el colaborador de reemplazo.");
+        montoDescuento = cuotas > 0 ? (montoTotal / cuotas) : montoTotal;
+        label = "Amortización de préstamo.";
+        break;
     }
 
-    const creada: NovedadIncidencia = {
-      id: `NOV-${Math.floor(100 + Math.random() * 900)}`,
-      id_reloj: nuevo.id_reloj,
-      tipo: tipoFinal,
-      fecha_inicio: nuevo.fecha_inicio,
-      cantidad_dias: ["Vacaciones", "Licencias médicas", "Maternidad", "Permiso"].includes(tipoFinal) ? parseInt(nuevo.cantidad_dias, 10) : undefined,
-      tiene_cobertura: tipoFinal === "Permiso" ? nuevo.tiene_cobertura : undefined,
-      id_reloj_cubre: (tipoFinal === "Permiso" && nuevo.tiene_cobertura) ? nuevo.id_reloj_cubre : undefined,
-      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(tipoFinal) ? parseFloat(nuevo.monto) : undefined,
-      cuotas: tipoFinal === "Cuentas por Cobrar (CXC)" ? parseInt(nuevo.cuotas, 10) : undefined,
-      comentario: nuevo.comentario.trim() || "Sin observaciones administrativas",
-      estado: "Pendiente Aplicación"
+    const porcentajeQuincenal = sueldoQuincenal > 0 ? (montoDescuento / sueldoQuincenal) * 100 : 0;
+
+    return { 
+      montoDescuento, 
+      label, 
+      porcentajeQuincenal,
+      sueldoQuincenal,
+      sueldoBase: sueldoBaseEmpleado
     };
-
-    if (setIncidencias) {
-      setIncidencias([creada, ...incidencias]);
-      setSelectedId(creada.id);
-      setShowAltaForm(false);
-      alert("✅ Registro de incidencia guardado.");
-    }
   };
 
-  const guardarFicha = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedId && setIncidencias) {
-      const fichaFormateada = {
-        ...formFicha,
-        cantidad_dias: formFicha.cantidad_dias ? parseInt(String(formFicha.cantidad_dias), 10) : undefined,
-        monto: formFicha.monto ? parseFloat(String(formFicha.monto)) : undefined,
-        cuotas: formFicha.cuotas ? parseInt(String(formFicha.cuotas), 10) : undefined,
-        tiene_cobertura: formFicha.tipo === "Permiso" ? formFicha.tiene_cobertura : undefined,
-        id_reloj_cubre: (formFicha.tipo === "Permiso" && formFicha.tiene_cobertura) ? formFicha.id_reloj_cubre : undefined,
-      };
+  const metricasAdministrador = useMemo(() => {
+    let tardanzasMesMonto = 0;
+    let faltasAcumuladasDias = 0;
+    let licenciasMedicasActivas = 0;
+    let vacacionesTomadasDiasTotal = 0;
+    let descuentosAcumuladosQuincena = 0;
 
-      const loteActualizado = incidencias.map(n => n.id === selectedId ? { ...n, ...fichaFormateada } as NovedadIncidencia : n);
-      setIncidencias(loteActualizado);
-      setIsEditing(false);
-      alert("✅ Cambios modificados con éxito.");
-    }
-  };
+    empleados.forEach(e => {
+      tardanzasMesMonto += e.tardanzas_quincena_actual_monto || 0;
+      faltasAcumuladasDias += e.faltas_acumuladas_cuenta || 0;
+      vacacionesTomadasDiasTotal += e.vacaciones_tomadas || 0;
+    });
 
-  const cambiarEstadoRapido = (id: string, nuevoEstado: "Procesado" | "Pendiente Aplicación") => {
-    if (!setIncidencias) return;
-    const loteActualizado = incidencias.map(n => n.id === id ? { ...n, estado: nuevoEstado } as NovedadIncidencia : n);
-    setIncidencias(loteActualizado);
-  };
+    incidencias.forEach(n => {
+      if (n.tipo === "Vacaciones") return;
+      const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias || 1, n.monto || 0, n.cuotas || 1, n.tiene_cobertura || false);
+      descuentosAcumuladosQuincena += imp.montoDescuento;
+      if (n.tipo === "Licencias médicas") licenciasMedicasActivas++;
+    });
 
-  const eliminarIncidenciaRapido = (id: string) => {
-    if (!setIncidencias || !confirm("¿Desea eliminar esta incidencia?")) return;
-    const loteFiltrado = incidencias.filter(n => n.id !== id);
-    setIncidencias(loteFiltrado);
-    setSelectedId("");
-  };
+    return { tardanzasMesMonto, faltasAcumuladasDias, licenciasMedicasActivas, vacacionesTomadasDiasTotal, descuentosAcumuladosQuincena };
+  }, [incidencias, empleados]);
 
   const filteredNovedades = useMemo(() => {
     return incidencias.filter((n) => {
-      if (activeTab === "vacaciones" && n.tipo !== "Vacaciones") return false;
-      if (activeTab === "general" && n.tipo === "Vacaciones") return false;
-
+      if (n.tipo === "Vacaciones") return false;
       const emp = empleados.find(e => e.id_reloj === n.id_reloj);
       if (!emp) return false;
-
-      const matchSearch = emp.nombre.toLowerCase().includes(search.toLowerCase()) || n.id_reloj.includes(search);
-      const matchTipo = activeTab === "vacaciones" ? true : (filterTipo === "Todos" || n.tipo === filterTipo);
-      const matchSucursal = filterSucursal === "Todos" || emp.sucursal_principal === filterSucursal;
-
-      return matchSearch && matchTipo && matchSucursal;
+      return (emp.nombre.toLowerCase().includes(search.toLowerCase()) || n.id_reloj.includes(search)) && 
+             (filterTipo === "Todos" || n.tipo === filterTipo) && 
+             (filterSucursal === "Todos" || emp.sucursal_principal === filterSucursal);
     });
-  }, [incidencias, activeTab, search, filterTipo, filterSucursal, empleados]);
+  }, [incidencias, search, filterTipo, filterSucursal, empleados]);
 
-  const cardClasses = "bg-white border border-slate-100/80 rounded-2xl shadow-[0_4px_20px_rgba(241,245,249,0.6)]";
-  const inputClasses = "w-full pl-9 pr-3.5 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs outline-none focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700";
-  const selectClasses = "w-full pl-9 pr-8 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs font-medium outline-none cursor-pointer focus:bg-white focus:border-emerald-500/80 transition-all text-slate-700 appearance-none";
+  const handleGuardarNuevaIncidencia = () => {
+    const idRelojFinal = nuevo.id_reloj || (empleados.length > 0 ? empleados[0].id_reloj : "");
+    if (!idRelojFinal) return alert("❌ Error: Seleccione un colaborador válido.");
+
+    const mDias = ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
+    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
+    const mCuotas = nuevo.tipo === "Vales / Faltantes de caja" ? 1 : (parseInt(nuevo.cuotas, 10) || 1);
+
+    if (["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) && mMonto <= 0) {
+      alert("❌ Error: Por favor introduzca un monto válido mayor a 0.");
+      return;
+    }
+
+    const calculoImpacto = analizarImpactoIncidencia(idRelojFinal, nuevo.tipo, mDias, mMonto, mCuotas, nuevo.tiene_cobertura);
+    if (calculoImpacto.porcentajeQuincenal > 60) {
+      const continuar = confirm(
+        `⚠️ ADVERTENCIA DE LÍMITE:\n\nEl descuento propuesto representa el ${calculoImpacto.porcentajeQuincenal.toFixed(1)}% del salario neto quincenal.\n\nSobrepasa el límite sugerido (60%). ¿Desea proceder?`
+      );
+      if (!continuar) return;
+    }
+
+    const creada: Incidencia = {
+      id_incidencia: `INC-${Math.floor(100 + Math.random() * 900)}`,
+      id_reloj: idRelojFinal, 
+      tipo: nuevo.tipo, 
+      fecha_inicio: nuevo.fecha_inicio || fechaSistema,
+      fecha_fin: ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? calcularFechaFinLaborable(nuevo.fecha_inicio || fechaSistema, mDias) : (nuevo.fecha_inicio || fechaSistema),
+      cantidad_dias: mDias,
+      tiene_cobertura: nuevo.tipo === "Permiso" ? nuevo.tiene_cobertura : undefined,
+      id_reloj_cubre: (nuevo.tipo === "Permiso" && nuevo.tiene_cobertura) ? nuevo.id_reloj_cubre : undefined,
+      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? mMonto : undefined,
+      cuotas: mCuotas,
+      observaciones: nuevo.comentario.trim() || "Procesado sin observaciones",
+      fecha_registro: fechaSistema,
+      ya_pagada_adelantada: false
+    };
+
+    addIncidencia(creada); 
+    setSelectedId(creada.id_incidencia); 
+    setShowAltaForm(false);
+
+    setNuevo({
+      id_reloj: empleados.length > 0 ? empleados[0].id_reloj : "",
+      tipo: "Permiso",
+      fecha_inicio: fechaSistema,
+      cantidad_dias: "1",
+      tiene_cobertura: false,
+      id_reloj_cubre: "Ninguno",
+      monto: "0",
+      cuotas: "1",
+      comentario: ""
+    });
+  };
+
+  const handleEjecutarModificacionFicha = () => {
+    if (selectedId && incidencias) {
+      const loteActualizado = incidencias.map(n => 
+        n.id_incidencia === selectedId ? { ...n, ...formFicha } as Incidencia : n
+      );
+      localStorage.setItem("taniapay_local_incidencias", JSON.stringify(loteActualizado));
+      window.location.reload(); 
+    }
+  };
+
+  const handleEliminarConConfirmacion = (id: string) => {
+    if (!confirm("¿Eliminar registro definitivo de la quincena?")) return;
+    eliminarIncidencia(id); 
+    setSelectedId("");
+  };
+
+  const cardClasses = "bg-white border border-slate-100 rounded-2xl shadow-[0_4px_20px_rgba(241,245,249,0.3)]";
+
+  const infoPreviaAlta = useMemo(() => {
+    const mDias = ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
+    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
+    const mCuotas = nuevo.tipo === "Vales / Faltantes de caja" ? 1 : (parseInt(nuevo.cuotas, 10) || 1);
+    return analizarImpactoIncidencia(nuevo.id_reloj, nuevo.tipo, mDias, mMonto, mCuotas, nuevo.tiene_cobertura);
+  }, [nuevo, empleados]);
 
   return (
-    <div className="flex gap-1 text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none overflow-hidden font-sans">
+    <div className="flex gap-2 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none font-sans overflow-hidden text-slate-700">
       
-      {/* CUERPO IZQUIERDO */}
-      <div className="flex-1 flex flex-col gap-6 min-w-0 pr-2">
+      {/* CUERPO CENTRAL DE LA TABLA */}
+      <div className="flex-1 flex flex-col gap-4 min-w-0 pr-1">
         
-        {/* INDICADORES */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vacaciones Activas</span>
-              <span className="text-xl font-bold text-slate-800 tracking-tight mt-1 block">{resumenes.vacs} Colabs.</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100/50"><Palmtree className="w-4 h-4" /></div>
+        {/* CABECERA PRINCIPAL CON ACCIÓN PRIMARIA A LA DERECHA */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="px-1 font-bold text-base text-[#2B4C5E] flex items-center gap-2">
+            <Clock className="w-5 h-5 text-emerald-600" /> Registro y Control de Incidencias Operativas
           </div>
-          
-          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Novedades Operativas</span>
-              <span className="text-xl font-bold text-slate-700 tracking-tight mt-1 block">{resumenes.asistencias} Regs.</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><UserCheck className="w-4 h-4" /></div>
-          </div>
-
-          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
-            <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vales / Faltantes quincena</span>
-              <span className="text-sm font-bold text-slate-700 font-mono mt-2 block">{formatMonto(resumenes.totalFaltantes)}</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><Receipt className="w-4 h-4" /></div>
-          </div>
-
-          <div className="bg-[#2B4C5E] rounded-2xl p-5 flex items-center justify-between shadow-md relative overflow-hidden">
-            <div>
-              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Balance General CXC</span>
-              <span className="text-sm font-bold text-white font-mono mt-2 block">{formatMonto(resumenes.totalCXC)}</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-white/10 text-emerald-400 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
-          </div>
-        </div>
-
-        {/* TABS */}
-        <div className="flex border-b border-slate-200 gap-2">
           <button 
-            type="button" onClick={() => { setActiveTab("general"); setFilterTipo("Todos"); }}
-            className={`px-5 py-3 font-bold text-xs transition-all border-b-2 -mb-px flex items-center gap-2 ${activeTab === "general" ? "border-[#42A873] text-[#2B4C5E]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
+            type="button" 
+            onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); }} 
+            className={`text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5 ${showAltaForm ? "bg-rose-50 text-rose-600 border border-rose-200" : "bg-slate-700 text-white hover:bg-slate-600"}`}
           >
-            <Clock className="w-4 h-4" /> Registro de Incidencias Operativas
-          </button>
-          <button 
-            type="button" onClick={() => { setActiveTab("vacaciones"); setFilterTipo("Vacaciones"); }}
-            className={`px-5 py-3 font-bold text-xs transition-all border-b-2 -mb-px flex items-center gap-2 ${activeTab === "vacaciones" ? "border-[#42A873] text-[#2B4C5E]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
-          >
-            <Palmtree className="w-4 h-4" /> Módulo Vacaciones (Lunes a Sábado)
+            {showAltaForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showAltaForm ? "Cancelar" : "Crear Incidencia"}
           </button>
         </div>
 
-        {/* FILTROS */}
-        <div className={`${cardClasses} p-4 flex flex-col gap-3 bg-white`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 w-full items-center">
-            <div className="relative w-full">
-              <span className="absolute left-3 top-3 text-slate-400"><Search className="w-4 h-4" /></span>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar colaborador..." className={inputClasses} />
-            </div>
-
-            {activeTab === "general" ? (
-              <div className="relative w-full">
-                <span className="absolute left-3 top-3 text-slate-400"><FileSpreadsheet className="w-4 h-4" /></span>
-                <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} className={selectClasses}>
-                  <option value="Todos">Todos los conceptos</option>
-                  <option value="Permiso">Permisos</option>
-                  <option value="Licencias médicas">Licencias médicas</option>
-                  <option value="Maternidad">Maternidad</option>
-                  <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                  <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-                </select>
-              </div>
-            ) : (
-              <div className="bg-emerald-50 text-[#399665] px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-emerald-100">
-                <Palmtree className="w-4 h-4" /> Rol de Vacaciones de Ley
-              </div>
-            )}
-
-            <div className="relative w-full">
-              <span className="absolute left-3 top-3 text-slate-400"><MapPin className="w-3.5 h-3.5" /></span>
-              <select value={filterSucursal} onChange={(e) => setFilterSucursal(e.target.value)} className={selectClasses}>
-                <option value="Todos">Todas las Sucursales</option>
-                {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            
-            <button 
-              type="button" onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); }}
-              className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 ${showAltaForm ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-slate-700 text-white hover:bg-slate-600"}`}
-            >
-              {showAltaForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              {showAltaForm ? "Cancelar Registro" : "Crear Incidencia"}
-            </button>
+        {/* PANEL DE MÈTRICAS ACTUALIZADO (TODAS BLANCAS CON COMUNICACIÓN DE ESTADO REAL) */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className={`${cardClasses} p-3.5 border-l-4 border-amber-500`}>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Tardanzas Mes</span>
+            <span className="text-sm font-bold font-mono text-slate-800 mt-1 block">{formatMonto(metricasAdministrador.tardanzasMesMonto)}</span>
+          </div>
+          <div className={`${cardClasses} p-3.5 border-l-4 border-rose-500`}>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Faltas Acumuladas</span>
+            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.faltasAcumuladasDias} Ausencias</span>
+          </div>
+          <div className={`${cardClasses} p-3.5 border-l-4 border-indigo-500`}>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Licencias Activas</span>
+            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.licenciasMedicasActivas} Médicas</span>
+          </div>
+          <div className={`${cardClasses} p-3.5 border-l-4 border-emerald-500`}>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Vacaciones Tomadas</span>
+            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.vacacionesTomadasDiasTotal} Días</span>
+          </div>
+          <div className={`${cardClasses} p-3.5 border-l-4 ${metricasAdministrador.descuentosAcumuladosQuincena > 0 ? "border-rose-500" : "border-emerald-500"}`}>
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Descuentos Aplicados</span>
+            <span className={`text-sm font-bold font-mono mt-1 block ${metricasAdministrador.descuentosAcumuladosQuincena > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+              {formatMonto(metricasAdministrador.descuentosAcumuladosQuincena)}
+            </span>
           </div>
         </div>
 
-        {/* TABLA MAESTRA */}
-        <div className={`${cardClasses} overflow-hidden bg-white`}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs table-fixed min-w-[1200px]">
+        {/* BARRA SECUNDARIA EXCLUSIVA PARA FILTROS */}
+        <div className="bg-white border border-slate-100 rounded-2xl p-2.5 flex items-center gap-2 shadow-sm">
+          <div className="relative w-60">
+            <span className="absolute left-2.5 top-2.5 text-slate-400"><Search className="w-3.5 h-3.5" /></span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar colaborador..." className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white text-slate-700" />
+          </div>
+          <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)} className="pl-2 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none cursor-pointer">
+            <option value="Todos">Todos los Conceptos</option>
+            <option value="Permiso">Permisos</option>
+            <option value="Licencias médicas">Licencias médicas</option>
+            <option value="Maternidad">Maternidad</option>
+            <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
+            <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
+          </select>
+          <select value={filterSucursal} onChange={e => setFilterSucursal(e.target.value)} className="pl-2 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none cursor-pointer">
+            <option value="Todos">Todas las Sucursales</option>
+            {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+
+        {/* TABLA MAESTRA DE 5 COLUMNAS OPTIMIZADA */}
+        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm flex-1">
+          <div className="overflow-x-auto h-full">
+            <table className="w-full text-left text-xs table-fixed min-w-[900px]">
               <thead>
-                <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 h-11">
-                  <th className="p-2.5 pl-6 w-20">ID Reloj</th>
-                  <th className="p-2.5 w-56">Colaborador / Sucursal</th>
-                  <th className="p-2.5 w-44">Tipo Incidencia</th>
-                  <th className="p-2.5 w-28 text-center">Fecha Inicio</th>
-                  <th className="p-2.5 w-28 text-center">{activeTab === "vacaciones" ? "Días Ley" : "Duración / Cuotas"}</th>
-                  <th className="p-2.5 w-68">Impacto Quincenal / Logística de Cobertura</th>
-                  <th className="p-2.5 text-center w-28">Estado Nom.</th>
+                <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 h-10 sticky top-0 z-10">
+                  <th className="p-2.5 pl-5 w-64">Colaborador / Reloj ID</th>
+                  <th className="p-2.5 w-48">Sucursal</th>
+                  <th className="p-2.5 w-40">Concepto</th>
+                  <th className="p-2.5 w-28 text-center">Plazo / Días</th>
+                  <th className="p-2.5 w-60">Impacto Financiero Aplicado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 {filteredNovedades.map((n) => {
-                  const isSelected = !showAltaForm && selectedId === n.id;
+                  const isSelected = !showAltaForm && selectedId === n.id_incidencia;
                   const emp = empleados.find(e => e.id_reloj === n.id_reloj);
                   const empCubre = n.id_reloj_cubre ? empleados.find(e => e.id_reloj === n.id_reloj_cubre) : null;
-                  const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias, n.monto, n.cuotas, n.tiene_cobertura);
+                  const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias || 1, n.monto || 0, n.cuotas || 1, n.tiene_cobertura || false);
 
                   return (
                     <tr 
-                      key={n.id} onClick={() => { setSelectedId(n.id); setShowAltaForm(false); }}
-                      className={`h-12 transition-all ${isSelected ? "bg-emerald-50/30 text-slate-900 font-medium border-l-4 border-emerald-500" : "hover:bg-slate-50/40 cursor-pointer"}`}
+                      key={n.id_incidencia} 
+                      onClick={() => { setSelectedId(n.id_incidencia); setShowAltaForm(false); }} 
+                      className={`h-12 cursor-pointer transition-all ${isSelected ? "bg-emerald-50/30 text-slate-900 border-l-4 border-emerald-500 font-bold" : "hover:bg-slate-50/30"}`}
                     >
-                      <td className={`p-2.5 pl-6 font-mono text-slate-400 font-semibold ${isSelected && "!pl-5 text-emerald-600"}`}>{n.id_reloj}</td>
-                      <td className="p-2.5">
-                        <div className="font-bold text-slate-700 uppercase truncate">{emp?.nombre || "No Registrado"}</div>
-                        <div className="text-[10px] text-slate-400 uppercase truncate">{emp?.sucursal_principal}</div>
+                      <td className="p-2.5 pl-5">
+                        <div className="font-bold text-slate-700 uppercase truncate">{emp?.nombre || "No Indexado"}</div>
+                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">ID: {n.id_reloj}</div>
                       </td>
+                      <td className="p-2.5 uppercase font-medium text-slate-500 truncate">{emp?.sucursal_principal}</td>
                       <td className="p-2.5 font-bold text-slate-700">{n.tipo}</td>
-                      <td className="p-2.5 text-center font-mono text-slate-500">{n.fecha_inicio}</td>
-                      <td className="p-2.5 text-center font-mono">
-                        {n.tipo === "Cuentas por Cobrar (CXC)" ? (
-                          <span className="font-bold text-amber-600">{n.cuotas} Cuotas</span>
-                        ) : ["Vales / Faltantes de caja"].includes(n.tipo) ? (
-                          <span className="text-slate-400 text-[10px]">Cierre Completo</span>
-                        ) : (
-                          <span className="font-bold text-slate-800">{n.cantidad_dias} Días</span>
-                        )}
+                      <td className="p-2.5 text-center font-mono font-bold text-slate-800">
+                        {n.tipo === "Cuentas por Cobrar (CXC)" ? `${n.cuotas || 1} Qs` : `${n.cantidad_dias || 1} d`}
                       </td>
-                      <td className="p-2.5 text-xs">
-                        {n.tipo === "Vacaciones" ? (
-                          (() => {
-                            const log = calcularFechaFinLaborable(n.fecha_inicio, Number(n.cantidad_dias) || 1);
-                            const sueldo = emp ? Number(emp.sueldo_base) : 27489.60;
-                            return (
-                              <div className="flex flex-col">
-                                <span className="text-slate-500">Regreso: <span className="font-bold text-slate-700">{log}</span></span>
-                                <span className="text-[10px] text-emerald-600 font-mono font-bold">Adelanto: {formatMonto((Number(n.cantidad_dias) || 1) * (sueldo / 23.83))}</span>
-                              </div>
-                            );
-                          })()
-                        ) : n.tipo === "Permiso" && n.tiene_cobertura ? (
-                          <span className="text-emerald-700 font-medium bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg">
-                            Cubierto por: <strong className="uppercase">{empCubre?.nombre || "ID: " + n.id_reloj_cubre}</strong>
-                          </span>
-                        ) : imp.descuentaSalario ? (
-                          <div className="flex flex-col">
-                            <span className="text-red-500 font-mono font-bold">Deducción Q: -{formatMonto(imp.montoDescuento)}</span>
-                            <span className="text-[9px] text-slate-400 truncate block max-w-[240px]">{imp.label}</span>
-                          </div>
+                      <td className="p-2.5 text-xs truncate">
+                        {n.tipo === "Permiso" && n.tiene_cobertura ? (
+                          <span className="text-emerald-700 font-medium bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg text-[10px]">Cubierto por: <strong className="uppercase">{empCubre?.nombre || n.id_reloj_cubre}</strong></span>
+                        ) : imp.montoDescuento > 0 ? (
+                          <span className="text-rose-600 font-mono font-bold">Deducción: -{formatMonto(imp.montoDescuento)}</span>
                         ) : (
-                          <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 text-[10px]">
-                            {imp.label}
-                          </span>
+                          <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-lg text-[10px]">{imp.label}</span>
                         )}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${n.estado === "Pendiente Aplicación" ? "bg-amber-50 text-[#F59E0B] border-amber-200" : "bg-emerald-50 text-[#10B981] border-emerald-200"}`}>{n.estado === "Pendiente Aplicación" ? "Pendiente" : "Aplicado"}</span>
                       </td>
                     </tr>
                   );
@@ -476,229 +375,263 @@ export default function IncidenciasView() {
         </div>
       </div>
 
-      {/* DRAG RESIZE GRIP */}
-      <div onMouseDown={startResizing} className="w-2 bg-transparent hover:bg-slate-200/60 active:bg-slate-300 rounded-full cursor-col-resize transition-all self-stretch shrink-0 mx-0.5 relative z-10" />
+      {/* DRAG GRIP CON VISIBILIDAD EN HOVER MEJORADA */}
+      <div onMouseDown={startResizing} className="w-1.5 hover:bg-slate-300 transition-colors cursor-col-resize self-stretch shrink-0 mx-0.5 rounded-full" />
 
       {/* PANEL EXPEDIENTE LATERAL */}
-      <div style={{ width: `${panelWidth}px` }} className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto shrink-0 select-text`}>
-        {showAltaForm ? (
-          /* REGISTRO NUEVO */
-          <form onSubmit={ejecutarAlta} className="flex flex-col gap-4 text-xs">
-            <div className="flex flex-col gap-1 border-b border-slate-100 pb-3">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Capturar Novedad</h4>
-              <span className="text-[10px] text-slate-400">Canalización autorizada de incidencias</span>
-            </div>
+      <div style={{ width: `${panelWidth}px` }} className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-md sticky top-4 max-h-[92vh] overflow-y-auto shrink-0 flex flex-col gap-5">
+        
+        {/* CABECERA FIJA CON CONTEXTO ID */}
+        <div className="border-b pb-2.5 border-slate-100 flex justify-between items-center shrink-0">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Detalle del registro</span>
+          {!showAltaForm && selectedId && (
+            <span className="font-mono bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-lg text-[11px] border">
+              {selectedId}
+            </span>
+          )}
+        </div>
 
+        {showAltaForm ? (
+          /* FORMULARIO DE ALTA */
+          <div className="flex flex-col gap-4 text-xs">
             <div className="flex flex-col gap-1">
               <label className="text-[9px] font-bold text-slate-400 uppercase">Colaborador</label>
-              <select value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} className={`${selectClasses} !pl-3 bg-white`}>
+              <select value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer">
                 {empleados.map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre.toUpperCase()} (ID: {emp.id_reloj})</option>)}
               </select>
             </div>
 
-            {activeTab === "general" ? (
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto de Incidencia</label>
-                <select value={nuevo.tipo} onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1", tiene_cobertura: false, id_reloj_cubre: "Ninguno"})} className={`${selectClasses} !pl-3 bg-white`}>
-                  <option value="Permiso">Permiso</option>
-                  <option value="Licencias médicas">Licencias médicas</option>
-                  <option value="Maternidad">Maternidad</option>
-                  <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                  <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-                </select>
-              </div>
-            ) : (
-              <div className="bg-emerald-50 text-[#399665] p-2.5 rounded-xl text-[10px] font-bold text-center">PLANIFICADOR DE VACACIONES (LUNES A SÁBADO)</div>
-            )}
-
             <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Fecha de Efectividad</label>
-              <input type="date" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.fecha_inicio} onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} />
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto</label>
+              <select value={nuevo.tipo} onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1", tiene_cobertura: false, id_reloj_cubre: "Ninguno"})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer">
+                <option value="Permiso">Permiso</option>
+                <option value="Licencias médicas">Licencia Médica</option>
+                <option value="Maternidad">Maternidad</option>
+                <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
+                <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
+              </select>
             </div>
 
-            {/* LÓGICA DE COBERTURA DINÁMICA EXCLUSIVA PARA PERMISOS */}
-            {activeTab === "general" && nuevo.tipo === "Permiso" && (
-              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2.5">
-                <label className="flex items-center gap-2.5 cursor-pointer select-none text-slate-700 font-bold">
-                  <input type="checkbox" className="w-4 h-4 rounded-lg border-slate-300 text-emerald-600 accent-[#42A873]" checked={nuevo.tiene_cobertura} onChange={e => setNuevo({...nuevo, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
-                  <span>¿El turno fue cubierto por otro empleado?</span>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Fecha Inicial</label>
+              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs focus:bg-white" value={nuevo.fecha_inicio} onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} />
+            </div>
+
+            {nuevo.tipo === "Permiso" && (
+              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 font-bold select-none">
+                  <input type="checkbox" className="w-4 h-4 rounded border-slate-300 accent-emerald-500" checked={nuevo.tiene_cobertura} onChange={e => setNuevo({...nuevo, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
+                  <span>¿Turno cubierto?</span>
                 </label>
-                
                 {nuevo.tiene_cobertura && (
-                  <div className="flex flex-col gap-1 animate-fadeIn">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase">Colaborador de Reemplazo</label>
-                    <select value={nuevo.id_reloj_cubre} onChange={e => setNuevo({...nuevo, id_reloj_cubre: e.target.value})} className={`${selectClasses} !pl-3 bg-white`}>
-                      <option value="Ninguno">-- Seleccionar Colaborador --</option>
-                      {empleados.filter(em => em.id_reloj !== nuevo.id_reloj).map(emp => (
-                        <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre.toUpperCase()}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <select value={nuevo.id_reloj_cubre} onChange={e => setNuevo({...nuevo, id_reloj_cubre: e.target.value})} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none cursor-pointer">
+                    <option value="Ninguno">-- Seleccionar Reemplazo --</option>
+                    {empleados.filter(em => em.id_reloj !== nuevo.id_reloj).map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre}</option>)}
+                  </select>
                 )}
               </div>
             )}
 
-            {((activeTab === "vacaciones" || ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo))) ? (
+            {(["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo)) ? (
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Días de Extensión</label>
-                <input type="number" min="1" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.cantidad_dias} onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} />
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Días</label>
+                <input type="number" min="1" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs" value={nuevo.cantidad_dias} onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} />
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1">
                   <label className="text-[9px] font-bold text-slate-400 uppercase">Monto Total (RD$)</label>
-                  <input type="number" min="1" step="0.01" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.monto} onChange={e => setNuevo({...nuevo, monto: e.target.value})} />
+                  <input type="number" min="0" step="0.01" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs" value={nuevo.monto} onChange={e => setNuevo({...nuevo, monto: e.target.value})} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">Dividir en Cuotas</label>
-                  <input type="number" min="1" disabled={nuevo.tipo !== "Cuentas por Cobrar (CXC)"} className={`${inputClasses} !pl-3 font-mono disabled:opacity-40 bg-white`} value={nuevo.tipo !== "Cuentas por Cobrar (CXC)" ? "1" : nuevo.cuotas} onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} />
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Cuotas</label>
+                  <input type="number" min="1" disabled={nuevo.tipo === "Vales / Faltantes de caja"} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono disabled:opacity-50" value={nuevo.tipo === "Vales / Faltantes de caja" ? "1" : nuevo.cuotas} onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} />
                 </div>
               </div>
             )}
 
-            {activeTab === "general" && (() => {
-              const info = analizarImpactoIncidencia(nuevo.id_reloj, nuevo.tipo, parseInt(nuevo.cantidad_dias, 10) || 1, parseFloat(nuevo.monto) || 0, parseInt(nuevo.cuotas, 10) || 1, nuevo.tiene_cobertura);
-              return (
-                <div className={`p-3 rounded-xl border text-[11px] ${info.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
-                  <div className="font-bold flex items-center gap-1 text-[10px] uppercase">
-                    {info.descuentaSalario ? <TrendingDown className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
-                    Impacto Quincenal Previsto
-                  </div>
-                  <div className="mt-1 font-medium">{info.descuentaSalario ? `Monto a deducir en esta quincena: ${formatMonto(info.montoDescuento)}` : info.label}</div>
+            {infoPreviaAlta.montoDescuento > 0 && (
+              <div className={`p-3 rounded-xl border text-[11px] flex flex-col gap-1.5 ${infoPreviaAlta.porcentajeQuincenal > 60 ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-slate-50 border-slate-200"}`}>
+                <div className="flex justify-between font-mono">
+                  <span>Deducción Estimada:</span>
+                  <span className="font-bold text-slate-800">-{formatMonto(infoPreviaAlta.montoDescuento)}</span>
                 </div>
-              );
-            })()}
+              </div>
+            )}
 
             <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Comentario / Justificación</label>
-              <input type="text" placeholder="Observaciones de RRHH..." className={`${inputClasses} !pl-3`} value={nuevo.comentario} onChange={e => setNuevo({...nuevo, comentario: e.target.value})} />
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Comentario</label>
+              <textarea placeholder="Notas administrativas obligatorias..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs h-14 outline-none focus:bg-white resize-none text-slate-700" value={nuevo.comentario} onChange={e => setNuevo({...nuevo, comentario: e.target.value})} />
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-              <button type="button" onClick={() => setShowAltaForm(false)} className="border border-slate-200 text-slate-500 font-semibold py-2 rounded-xl">Cancelar</button>
-              <button type="submit" className="bg-slate-700 text-white font-bold py-2 rounded-xl flex items-center justify-center gap-1"><Save className="w-4 h-4" /> Registrar</button>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t">
+              <button type="button" onClick={() => setShowAltaForm(false)} className="border border-slate-200 text-slate-500 font-semibold py-1.5 rounded-xl">Cancelar</button>
+              <button type="button" onClick={handleGuardarNuevaIncidencia} className="bg-[#2B4C5E] text-white font-bold py-1.5 rounded-xl transition-all hover:bg-[#1E3542]">Guardar Registro</button>
             </div>
-          </form>
+          </div>
         ) : novSel ? (
-          /* EXPEDIENTE DETALLADO */
-          <form onSubmit={guardarFicha} className="flex flex-col gap-4 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Expediente Único</span>
-                <h4 className="font-bold text-slate-800 text-sm mt-0.5">{novSel.id} · {novSel.tipo}</h4>
+          /* AUDITORÍA CONTABLE VISTA DETALLE */
+          <div className="flex flex-col gap-5 text-xs h-full justify-between animate-fadeIn">
+            <div className="flex flex-col gap-4">
+              
+              {/* FILA DE COLABORADOR E INCLUSIÓN EXPLÍCITA DE SUELDO BASE */}
+              <div className="flex flex-col">
+                <span className="text-slate-800 font-black text-xs tracking-wider uppercase font-sans">
+                  {novSel.tipo === "Cuentas por Cobrar (CXC)" ? "CUENTAS POR COBRAR" : novSel.tipo.toUpperCase()}
+                </span>
+                <span className="text-slate-700 font-bold uppercase mt-2 text-[13px] tracking-normal">
+                  {empAsociado ? empAsociado.nombre : "No Indexado"}
+                </span>
+                <div className="text-[10px] text-slate-400 uppercase font-medium mt-0.5 flex flex-col gap-0.5">
+                  <span>Sucursal: {empAsociado?.sucursal_principal || "No Asignada"}</span>
+                  <span className="text-slate-500 font-semibold font-mono mt-0.5 bg-slate-50 px-2 py-1 border border-slate-100 rounded-lg self-start flex items-center gap-1">
+                    <User className="w-3 h-3 text-slate-400" /> Sueldo Base: {formatMonto(empAsociado?.sueldo_base || 0)}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            {/* ACCIONES DE RESPUESTA RÁPIDA */}
-            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Estado y Cierre de Incidencia</span>
-              <div className="grid grid-cols-2 gap-2">
-                {novSel.estado === "Pendiente Aplicación" ? (
-                  <button type="button" onClick={() => cambiarEstadoRapido(novSel.id, "Procesado")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 shadow-sm"><CheckCircle className="w-3.5 h-3.5" /> Aplicar</button>
-                ) : (
-                  <button type="button" onClick={() => cambiarEstadoRapido(novSel.id, "Pendiente Aplicación")} className="border border-amber-300 bg-amber-50 text-amber-700 py-1.5 rounded-lg flex items-center justify-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Reabrir</button>
-                )}
-                <button type="button" onClick={() => eliminarIncidenciaRapido(novSel.id)} className="bg-red-50 text-red-600 font-bold py-1.5 rounded-lg border border-red-200 flex items-center justify-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Eliminar</button>
-              </div>
-            </div>
-
-            <div className="w-full">
               {!isEditing ? (
-                <button type="button" onClick={() => setIsEditing(true)} className="w-full border border-slate-200 text-slate-600 bg-slate-50/40 py-2 rounded-xl flex items-center justify-center gap-1.5 font-bold">
-                  <Pencil className="w-3.5 h-3.5 text-slate-400" /> Editar Registro
-                </button>
+                (() => {
+                  const esAjusteFinanciero = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(novSel.tipo);
+                  const d = novSel.cantidad_dias || 1;
+                  const m = novSel.monto || 0;
+                  const c = novSel.cuotas || 1;
+                  const imp = analizarImpactoIncidencia(novSel.id_reloj, novSel.tipo, d, m, c, novSel.tiene_cobertura || false);
+
+                  const totalDeuda = esAjusteFinanciero ? m : imp.montoDescuento;
+                  const descuentoAhora = imp.montoDescuento;
+                  const restante = Math.max(0, totalDeuda - descuentoAhora);
+                  const cuotasFaltantes = novSel.tipo === "Cuentas por Cobrar (CXC)" ? Math.max(0, c - 1) : 0;
+
+                  return (
+                    <div className="flex flex-col gap-4">
+                      
+                      {esAjusteFinanciero ? (
+                        /* 📊 ESQUEMA CONTABLE DE 3 DATOS PRINCIPALES */
+                        <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-4 flex flex-col gap-3.5 font-sans relative">
+                          {imp.porcentajeQuincenal > 60 && (
+                            <div className="absolute top-3 right-3 text-rose-500" title="Excede el 60% legal">
+                              <AlertTriangle className="w-4 h-4" />
+                            </div>
+                          )}
+                          
+                          <div>
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total de la deuda:</span>
+                            <span className="text-slate-800 font-bold text-base font-mono block mt-0.5">
+                              {formatMonto(totalDeuda)}
+                            </span>
+                          </div>
+
+                          <div className="border-t border-slate-200/60 pt-3">
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuánto se descuenta ahora:</span>
+                            <span className="text-rose-600 font-extrabold text-base font-mono block mt-0.5">
+                              -{formatMonto(descuentoAhora)}
+                            </span>
+                          </div>
+
+                          <div className="border-t border-slate-200/60 pt-3 grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuánto queda (Restante):</span>
+                              <span className="text-slate-700 font-bold text-[13px] font-mono block mt-0.5">
+                                {formatMonto(restante)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuántas cuotas faltan:</span>
+                              <span className="text-slate-700 font-bold text-[13px] block mt-0.5">
+                                {novSel.tipo === "Vales / Faltantes de caja" ? "0 cuotas" : `${cuotasFaltantes} cuota${cuotasFaltantes !== 1 ? "s" : ""}`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* CONTROL PARA AUSENCIAS O LICENCIAS */
+                        <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 text-center">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Monto de Deducción</span>
+                          <span className="text-xl font-black font-mono text-rose-600 block mt-1">
+                            {imp.montoDescuento > 0 ? `-${formatMonto(imp.montoDescuento)}` : "RD$ 0.00"}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium block mt-1.5 font-sans bg-white border py-1 px-2 rounded-lg inline-block">{imp.label}</span>
+                        </div>
+                      )}
+
+                      {/* DATOS DE COBERTURA Y VIGENCIA RETRAÍDOS DE LA TABLA */}
+                      <div className="flex flex-col gap-2 border-t pt-3 border-slate-100 font-sans text-[11px] text-slate-400">
+                        <div className="flex justify-between"><span>Vigencia/Rango:</span><span className="font-mono text-slate-600 font-semibold">{novSel.fecha_inicio} {novSel.fecha_fin && `al ${novSel.fecha_fin}`}</span></div>
+                        <div className="flex justify-between"><span>Registrado el:</span><span className="font-mono text-slate-600">{novSel.fecha_registro}</span></div>
+                        {novSel.observaciones && <div className="text-[10px] text-slate-500 italic mt-2 bg-slate-50 p-2.5 border border-slate-100 rounded-xl">Nota: "{novSel.observaciones}"</div>}
+                      </div>
+
+                    </div>
+                  );
+                })()
               ) : (
-                <div className="flex gap-2.5 w-full">
-                  <button type="button" onClick={() => setIsEditing(false)} className="border border-slate-200 text-slate-400 py-2 rounded-xl flex-1 text-center font-semibold">Cancelar</button>
-                  <button type="submit" className="bg-[#2B4C5E] text-white py-2 rounded-xl flex-1 flex items-center justify-center gap-1.5 font-bold"><Save className="w-3.5 h-3.5" /> Guardar</button>
+                /* FORMULARIO LATERAL INTERNO DE EDICIÓN */
+                <div className="flex flex-col gap-3 animate-fadeIn">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">Concepto</label>
+                    <select value={formFicha.tipo} onChange={(e) => setFormFicha({ ...formFicha, tipo: e.target.value as any, monto: 0, cuotas: 1, cantidad_dias: 1 })} className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs">
+                      <option value="Permiso">Permiso</option>
+                      <option value="Licencias médicas">Licencia Médica</option>
+                      <option value="Maternidad">Maternidad</option>
+                      <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
+                      <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">Fecha de Inicio</label>
+                    <input type="date" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.fecha_inicio || ""} onChange={e => setFormFicha({...formFicha, fecha_inicio: e.target.value})} />
+                  </div>
+
+                  {(["Licencias médicas", "Maternidad", "Permiso"].includes(formFicha.tipo || "")) ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] text-slate-400 font-bold uppercase">Días</label>
+                      <input type="number" min="1" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.cantidad_dias ?? 1} onChange={e => setFormFicha({...formFicha, cantidad_dias: parseInt(e.target.value, 10) || 1})} />
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-slate-400 font-bold uppercase">Monto</label>
+                        <input type="number" step="0.01" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.monto ?? 0} onChange={e => setFormFicha({...formFicha, monto: parseFloat(e.target.value) || 0})} />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-slate-400 font-bold uppercase">Cuotas</label>
+                        <input type="number" min="1" disabled={formFicha.tipo === "Vales / Faltantes de caja"} className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono disabled:opacity-40" value={formFicha.tipo === "Vales / Faltantes de caja" ? 1 : (formFicha.cuotas ?? 1)} onChange={e => setFormFicha({...formFicha, cuotas: parseInt(e.target.value, 10) || 1})} />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">Observaciones</label>
+                    <textarea className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs h-14 resize-none" value={formFicha.observaciones || ""} onChange={e => setFormFicha({...formFicha, observaciones: e.target.value})} />
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="bg-slate-50 border border-slate-200/50 p-3 rounded-xl flex flex-col gap-1 text-[11px] text-slate-500">
-              <div>Empleado Reloj ID: <strong className="font-mono text-slate-800">{novSel.id_reloj}</strong></div>
-              <div className="truncate">Nombre: <strong className="text-slate-800 font-bold uppercase">{empAsociado?.nombre || "Sin indexar"}</strong></div>
-              <div>Sueldo Base Mensual: <strong className="text-slate-800 font-mono">{formatMonto(empAsociado ? Number(empAsociado.sueldo_base) : 27489.60)}</strong></div>
+            {/* BOTÓN DISPARADOR DE EDICIÓN DE FICHA LOCAL */}
+            <div className="pt-3 border-t border-slate-100">
+              {!isEditing ? (
+                <button type="button" onClick={() => setIsEditing(true)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all">
+                  <Pencil className="w-3.5 h-3.5" /> Editar Registro
+                </button>
+              ) : (
+                <div className="flex gap-2 w-full">
+                  <button type="button" onClick={() => setIsEditing(false)} className="border border-slate-200 text-slate-400 py-1.5 rounded-xl flex-1 text-center font-semibold">Cancelar</button>
+                  <button type="button" onClick={handleEjecutarModificacionFicha} className="bg-[#2B4C5E] text-white py-1.5 rounded-xl flex-1 flex items-center justify-center gap-1.5 font-bold"><Save className="w-3.5 h-3.5" /> Guardar</button>
+                </div>
+              )}
             </div>
-
-            {novSel.tipo !== "Vacaciones" && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto</label>
-                <select disabled={!isEditing} value={isEditing ? formFicha.tipo : novSel.tipo} onChange={(e) => setFormFicha({ ...formFicha, tipo: e.target.value as any, monto: 0, cuotas: 1, cantidad_dias: 1, tiene_cobertura: false, id_reloj_cubre: "Ninguno" })} className={selectClasses}>
-                  <option value="Permiso">Permiso</option>
-                  <option value="Licencias médicas">Licencias médicas</option>
-                  <option value="Maternidad">Maternidad</option>
-                  <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                  <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-                </select>
-              </div>
-            )}
-
-            {/* CONTROL DE PARÁMETROS EDITABLES DE COBERTURA */}
-            {formFicha.tipo === "Permiso" || (!isEditing && novSel.tipo === "Permiso") && (
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col gap-2">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-700 font-bold">
-                  <input type="checkbox" disabled={!isEditing} className="w-4 h-4 rounded text-emerald-600 focus:ring-0" checked={isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura} onChange={e => setFormFicha({...formFicha, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
-                  <span>¿Turno Cubierto?</span>
-                </label>
-                {(isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura) && (
-                  <div className="flex flex-col gap-1 mt-1">
-                    <label className="text-[9px] text-slate-400 font-bold uppercase">Reemplazo Autorizado</label>
-                    <select disabled={!isEditing} value={isEditing ? formFicha.id_reloj_cubre : novSel.id_reloj_cubre} onChange={e => setFormFicha({...formFicha, id_reloj_cubre: e.target.value})} className={selectClasses}>
-                      <option value="Ninguno">-- Seleccionar --</option>
-                      {empleados.map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(isEditing ? ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(formFicha.tipo || "") : ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(novSel.tipo)) ? (
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">Monto Total</label>
-                  <input type="number" step="0.01" disabled={!isEditing} value={isEditing ? (formFicha.monto ?? 0) : (novSel.monto ?? 0)} onChange={(e) => setFormFicha({ ...formFicha, monto: parseFloat(e.target.value) || 0 })} className={`${inputClasses} !pl-3 bg-white font-mono`} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">Cuotas</label>
-                  <input type="number" min="1" disabled={!isEditing || (isEditing ? formFicha.tipo !== "Cuentas por Cobrar (CXC)" : novSel.tipo !== "Cuentas por Cobrar (CXC)")} value={isEditing ? (formFicha.cuotas ?? 1) : (novSel.cuotas ?? 1)} onChange={(e) => setFormFicha({ ...formFicha, cuotas: parseInt(e.target.value, 10) || 1 })} className={`${inputClasses} !pl-3 bg-white font-mono`} />
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Duración Temporal (Días)</label>
-                <input type="number" min="1" disabled={!isEditing} value={isEditing ? (formFicha.cantidad_dias ?? 1) : (novSel.cantidad_dias ?? 1)} onChange={(e) => setFormFicha({ ...formFicha, cantidad_dias: parseInt(e.target.value, 10) || 1 })} className={`${inputClasses} font-mono`} />
-              </div>
-            )}
-
-            {/* IMPACTO REAL */}
-            {(() => {
-              const tActivo = isEditing ? formFicha.tipo : novSel.tipo;
-              const dActivos = isEditing ? formFicha.cantidad_dias : novSel.cantidad_dias;
-              const mActivo = isEditing ? formFicha.monto : novSel.monto;
-              const cActivas = isEditing ? formFicha.cuotas : novSel.cuotas;
-              const cobActiva = isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura;
-
-              const info = analizarImpactoIncidencia(novSel.id_reloj, tActivo as any, dActivos, mActivo, cActivas, cobActiva);
-              return (
-                <div className={`p-3 rounded-xl border text-[11px] ${info.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
-                  <div className="font-bold uppercase tracking-wide text-[10px]">Impacto Contable Quincenal Real</div>
-                  <div className="mt-1 font-medium">
-                    {info.descuentaSalario 
-                      ? `Se debitará en nómina de esta quincena: ${formatMonto(info.montoDescuento)}. ${info.label}` 
-                      : info.label}
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Notas de Control Administrativo</label>
-              <textarea disabled={!isEditing} value={isEditing ? formFicha.comentario : novSel.comentario} onChange={(e) => setFormFicha({ ...formFicha, comentario: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs h-16 outline-none focus:bg-white resize-none font-medium" />
-            </div>
-          </form>
+          </div>
         ) : (
-          <div className="text-center text-slate-400 italic py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">Seleccione un registro para desplegar los detalles contables.</div>
+          /* ESTADO VACÍO REGULADO CON ICONO E INSTRUCCIÓN EXACTA */
+          <div className="text-center text-slate-400 h-full flex flex-col items-center justify-center py-24 px-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200/80 my-auto">
+            <ClipboardList className="w-8 h-8 text-slate-300 mb-2" />
+            <p className="text-[11px] font-medium tracking-normal font-sans text-slate-400 leading-relaxed max-w-[180px]">
+              Selecciona un registro para ver el desglose
+            </p>
+          </div>
         )}
       </div>
     </div>
