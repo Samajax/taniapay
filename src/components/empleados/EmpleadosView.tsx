@@ -38,6 +38,8 @@ interface Colaborador {
   banco?: string;               
   tipo_jornada: "Completa" | "Parcial"; 
   horas_jornada_parcial?: number;       
+  cantidad_dependientes_tss?: number; // 🏥 Cantidad de dependientes adicionales extras
+  aplicacion_quincena_tss?: "Primera" | "Segunda" | "Ambas"; // 📅 Quincena de descuento
   estado?: "Activo" | "Inactivo";
 }
 
@@ -83,7 +85,7 @@ export default function EmpleadosView() {
   const [isEditing, setIsEditing] = useState(false);
 
   // --- LÓGICA DE CONTROL DE ANCHO AJUSTABLE (RESIZABLE) ---
-  const [panelWidth, setPanelWidth] = useState(430); // Ancho inicial de la ficha en px
+  const [panelWidth, setPanelWidth] = useState(430); 
   const isResizing = useRef(false);
 
   const startResizing = React.useCallback((mouseDownEvent: React.MouseEvent) => {
@@ -97,9 +99,7 @@ export default function EmpleadosView() {
 
   const resize = React.useCallback((mouseMoveEvent: MouseEvent) => {
     if (!isResizing.current) return;
-    // Calcular el nuevo ancho restando la posición X del mouse del ancho total de la ventana
     const nextWidth = window.innerWidth - mouseMoveEvent.clientX - 32; 
-    // Establecer límites mínimos y máximos para el panel de la ficha
     if (nextWidth > 340 && nextWidth < 700) {
       setPanelWidth(nextWidth);
     }
@@ -119,7 +119,7 @@ export default function EmpleadosView() {
     sueldo_base: "27489.57", exento_ponche: false, horas_extras_fijas: false, cantidad_horas_extras: "0", monto_vales_cxc: "0",
     fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01", fecha_fin_contrato: "",
     cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa" as "Completa" | "Parcial",
-    horas_jornada_parcial: "8"
+    horas_jornada_parcial: "8", cantidad_dependientes_tss: "0", aplicacion_quincena_tss: "Segunda" as "Primera" | "Segunda" | "Ambas"
   });
 
   const [formFicha, setFormFicha] = useState<Partial<Colaborador>>({});
@@ -134,7 +134,15 @@ export default function EmpleadosView() {
 
   useEffect(() => {
     if (empSel) {
-      setFormFicha({ tipo_jornada: "Completa", sucursal_secundaria: "Ninguna", horas_jornada_parcial: 8, cantidad_horas_extras: 0, ...empSel });
+      setFormFicha({ 
+        tipo_jornada: "Completa", 
+        sucursal_secundaria: "Ninguna", 
+        horas_jornada_parcial: 8, 
+        cantidad_horas_extras: 0, 
+        cantidad_dependientes_tss: 0, 
+        aplicacion_quincena_tss: "Segunda", 
+        ...empSel 
+      });
       setIsEditing(false);
     }
   }, [selectedEmpleadoId, empSel]);
@@ -164,7 +172,11 @@ export default function EmpleadosView() {
       monto_vales_cxc: parseFloat(nuevo.monto_vales_cxc) || 0, fecha_nacimiento: nuevo.fecha_nacimiento || undefined,
       fecha_inicio_contrato: nuevo.fecha_inicio_contrato || undefined, fecha_fin_contrato: nuevo.fecha_fin_contrato || undefined,
       cedula: nuevo.cedula.trim() || undefined, cuenta_bancaria: nuevo.cuenta_bancaria.trim() || undefined, banco: nuevo.banco,
-      tipo_jornada: nuevo.tipo_jornada, horas_jornada_parcial: nuevo.tipo_jornada === "Parcial" ? (parseInt(nuevo.horas_jornada_parcial, 10) || 0) : undefined, estado: "Activo"
+      tipo_jornada: nuevo.tipo_jornada, 
+      horas_jornada_parcial: nuevo.tipo_jornada === "Parcial" ? (parseFloat(nuevo.horas_jornada_parcial) || 0) : undefined,
+      cantidad_dependientes_tss: parseInt(nuevo.cantidad_dependientes_tss, 10) || 0,
+      aplicacion_quincena_tss: nuevo.aplicacion_quincena_tss,
+      estado: "Activo"
     };
 
     if (setEmpleados) {
@@ -174,7 +186,8 @@ export default function EmpleadosView() {
       setNuevo({
         id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna", sueldo_base: "27489.57",
         exento_ponche: false, horas_extras_fijas: false, cantidad_horas_extras: "0", monto_vales_cxc: "0", fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01",
-        fecha_fin_contrato: "", cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa", horas_jornada_parcial: "8"
+        fecha_fin_contrato: "", cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa", horas_jornada_parcial: "8",
+        cantidad_dependientes_tss: "0", aplicacion_quincena_tss: "Segunda"
       });
       alert("✅ Colaborador registrado con éxito.");
     }
@@ -188,8 +201,10 @@ export default function EmpleadosView() {
         ...formFichaClean,
         sueldo_base: parseFloat(String(formFicha.sueldo_base)) || 0,
         monto_vales_cxc: parseFloat(String(formFicha.monto_vales_cxc)) || 0,
-        horas_jornada_parcial: formFicha.tipo_jornada === "Parcial" ? (parseInt(String(formFicha.horas_jornada_parcial), 10) || 0) : undefined,
+        horas_jornada_parcial: formFicha.tipo_jornada === "Parcial" ? (parseFloat(String(formFicha.horas_jornada_parcial)) || 0) : undefined,
         cantidad_horas_extras: formFicha.horas_extras_fijas ? (parseInt(String(formFicha.cantidad_horas_extras), 10) || 0) : undefined,
+        cantidad_dependientes_tss: parseInt(String(formFicha.cantidad_dependientes_tss), 10) || 0,
+        aplicacion_quincena_tss: formFicha.aplicacion_quincena_tss || "Segunda",
         sucursal_secundaria: formFicha.sucursal_secundaria === "Ninguna" ? undefined : formFicha.sucursal_secundaria
       };
 
@@ -237,10 +252,9 @@ export default function EmpleadosView() {
   const selectClasses = "w-full pl-9 pr-8 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs font-medium outline-none cursor-pointer focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700 appearance-none disabled:opacity-60 disabled:bg-slate-50/50";
 
   return (
-    // 🎛️ Cambiado grid-cols por flex para permitir el redimensionamiento dinámico del layout
-    <div className="flex gap-1 text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none overflow-hidden">
+    <div className="flex gap-1 text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none overflow-hidden font-sans">
       
-      {/* SECCIÓN IZQUIERDA: MAESTRO E INDICADORES (Ocupa el espacio restante fluido) */}
+      {/* SECCIÓN IZQUIERDA: MAESTRO E INDICADORES */}
       <div className="flex-1 flex flex-col gap-6 min-w-0 pr-2">
         
         {/* INDICADORES TOP */}
@@ -443,14 +457,13 @@ export default function EmpleadosView() {
         </div>
       </div>
 
-      {/* 🛠️ CONTROLLER DE ARRASTRE (Grip invisible / área interactiva) */}
+      {/* DRAG RESIZE GRIP */}
       <div 
         onMouseDown={startResizing}
         className="w-2.5 hover:w-3 bg-transparent hover:bg-slate-200/60 active:bg-slate-300 rounded-full cursor-col-resize transition-all self-stretch shrink-0 mx-0.5 relative z-10"
-        title="Arrastra para ajustar el tamaño de los paneles"
       />
 
-      {/* PANEL EXPEDIENTE LATERAL (Su ancho ahora está controlado por el estado panelWidth) */}
+      {/* PANEL EXPEDIENTE LATERAL */}
       <div 
         style={{ width: `${panelWidth}px` }}
         className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto border-slate-200/50 shrink-0 select-text`}
@@ -528,9 +541,33 @@ export default function EmpleadosView() {
                   </select>
                 </div>
                 <div>
-                  <input type="number" min="1" max="12" placeholder="Horas diarias" disabled={nuevo.tipo_jornada === "Completa"} className={`${inputClasses} !pl-2.5 font-mono disabled:opacity-40 bg-white`} value={nuevo.tipo_jornada === "Completa" ? "8" : nuevo.horas_jornada_parcial} onChange={e => setNuevo({...nuevo, horas_jornada_parcial: e.target.value})} />
+                  <input type="number" min="1" max="12" step="0.5" placeholder="Horas diarias" disabled={nuevo.tipo_jornada === "Completa"} className={`${inputClasses} !pl-2.5 font-mono disabled:opacity-40 bg-white`} value={nuevo.tipo_jornada === "Completa" ? "8" : nuevo.horas_jornada_parcial} onChange={e => setNuevo({...nuevo, horas_jornada_parcial: e.target.value})} />
                 </div>
               </div>
+            </div>
+
+            {/* 🏥 CONFIGURACIÓN TSS EN FORMULARIO DE ALTA */}
+            <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Parámetros TSS</span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-medium text-slate-400">Dependientes Extras</label>
+                  <input type="number" min="0" max="10" className={`${inputClasses} !pl-3 bg-white font-mono`} value={nuevo.cantidad_dependientes_tss} onChange={e => setNuevo({...nuevo, cantidad_dependientes_tss: e.target.value})} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] font-medium text-slate-400">Quincena Descuento</label>
+                  <select value={nuevo.aplicacion_quincena_tss} onChange={e => setNuevo({...nuevo, aplicacion_quincena_tss: e.target.value as any})} className={`${selectClasses} !pl-3 bg-white`}>
+                    <option value="Primera">1ra Quincena</option>
+                    <option value="Segunda">2da Quincena (Fin de Mes)</option>
+                    <option value="Ambas">Dividir en Ambas</option>
+                  </select>
+                </div>
+              </div>
+              {parseInt(nuevo.cantidad_dependientes_tss, 10) > 0 && (
+                <div className="text-[10px] text-emerald-600 font-semibold bg-emerald-50/50 border border-emerald-100 p-2 rounded-xl text-center">
+                  Monto a descontar: {formatMoneda(parseInt(nuevo.cantidad_dependientes_tss, 10) * 1919.78)}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -571,7 +608,7 @@ export default function EmpleadosView() {
                   <span>Autorizar Horas Extras Fijas</span>
                 </label>
                 {nuevo.horas_extras_fijas && (
-                  <div className="pl-6 flex flex-col gap-1 animate-fadeIn">
+                  <div className="pl-6 flex flex-col gap-1">
                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Horas quincenales</label>
                     <input type="number" className={`${inputClasses} bg-white !pl-3 font-mono`} placeholder="Cantidad de horas" value={nuevo.cantidad_horas_extras} onChange={e => setNuevo({...nuevo, cantidad_horas_extras: e.target.value})} />
                   </div>
@@ -675,7 +712,7 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* JORNADA LABORAL DIARIA */}
+            {/* REGIMEN OPERATIVO */}
             <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Régimen Operativo</span>
               <div className="grid grid-cols-2 gap-3">
@@ -688,9 +725,35 @@ export default function EmpleadosView() {
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Cómputo Horas</label>
-                  <input type="number" min="1" max="12" disabled={!isEditing || (isEditing ? formFicha.tipo_jornada === "Completa" : empSel.tipo_jornada !== "Parcial")} className={`${inputClasses} font-mono bg-white`} value={isEditing ? (formFicha.tipo_jornada === "Completa" ? "8" : (formFicha.horas_jornada_parcial ?? "")) : (empSel.tipo_jornada === "Parcial" ? (empSel.horas_jornada_parcial ?? "") : "8")} onChange={e => setFormFicha({...formFicha, horas_jornada_parcial: parseInt(e.target.value, 10) || 0})} />
+                  <input type="number" min="1" max="12" step="0.5" disabled={!isEditing || (isEditing ? formFicha.tipo_jornada === "Completa" : empSel.tipo_jornada !== "Parcial")} className={`${inputClasses} font-mono bg-white`} value={isEditing ? (formFicha.tipo_jornada === "Completa" ? "8" : (formFicha.horas_jornada_parcial ?? "")) : (empSel.tipo_jornada === "Parcial" ? (empSel.horas_jornada_parcial ?? "") : "8")} onChange={e => setFormFicha({...formFicha, horas_jornada_parcial: parseFloat(e.target.value) || 0})} />
                 </div>
               </div>
+            </div>
+
+            {/* 🏥 SECCIÓN CONTROL TSS ADICIONAL (EXPEDIENTE) */}
+            <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Cálculo de Descuentos TSS</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Dependientes Extras</label>
+                  <input type="number" min="0" max="10" disabled={!isEditing} className={`${inputClasses} font-mono bg-white !pl-3`} value={isEditing ? (formFicha.cantidad_dependientes_tss ?? 0) : (empSel.cantidad_dependientes_tss ?? 0)} onChange={e => setFormFicha({...formFicha, cantidad_dependientes_tss: parseInt(e.target.value, 10) || 0})} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Período Retención</label>
+                  <select disabled={!isEditing} value={isEditing ? (formFicha.aplicacion_quincena_tss ?? "Segunda") : (empSel.aplicacion_quincena_tss ?? "Segunda")} onChange={e => setFormFicha({...formFicha, aplicacion_quincena_tss: e.target.value as any})} className={selectClasses}>
+                    <option value="Primera">1ra Quincena</option>
+                    <option value="Segunda">2da Quincena (Fin de Mes)</option>
+                    <option value="Ambas">Dividir en Ambas</option>
+                  </select>
+                </div>
+              </div>
+              
+              {/* Cálculo en tiempo real del dinero extra de TSS */}
+              {((isEditing ? formFicha.cantidad_dependientes_tss : empSel.cantidad_dependientes_tss) || 0) > 0 && (
+                <div className="text-[10px] text-emerald-600 bg-emerald-50/40 font-semibold p-2 rounded-xl text-center border border-emerald-100/50 mt-1">
+                  Retención Adicional: {formatMoneda(((isEditing ? formFicha.cantidad_dependientes_tss : empSel.cantidad_dependientes_tss) || 0) * 1919.78)}
+                </div>
+              )}
             </div>
 
             {/* SECCIÓN DE FECHAS DE CONTRATACIÓN Y SALARIO */}
@@ -729,7 +792,7 @@ export default function EmpleadosView() {
                 </label>
                 
                 {(isEditing ? formFicha.horas_extras_fijas : empSel.horas_extras_fijas) && (
-                  <div className="pt-1 flex items-center justify-between gap-4 animate-fadeIn">
+                  <div className="pt-1 flex items-center justify-between gap-4">
                     <span className="text-[10px] text-slate-400 font-bold uppercase">Cantidad quincenal:</span>
                     <input type="number" disabled={!isEditing} className={`${inputClasses} bg-white !pl-3 max-w-[120px] font-mono font-bold text-slate-700`} value={isEditing ? (formFicha.cantidad_horas_extras ?? 0) : (empSel.cantidad_horas_extras ?? 0)} onChange={e => setFormFicha({...formFicha, cantidad_horas_extras: parseInt(e.target.value, 10) || 0})} />
                   </div>
