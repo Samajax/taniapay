@@ -20,33 +20,29 @@ import {
   ShieldAlert,
   CheckCircle,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  UserPlus
 } from "lucide-react";
 
 interface NovedadIncidencia {
   id: string;
   id_reloj: string;
   tipo: 
-    | "Vacaciones" 
-    | "Licencia Médica" 
-    | "Licencia Maternidad" 
-    | "Permiso Justificado" 
-    | "Falta Injustificada" 
-    | "Tardanza" 
-    | "Permiso sin disfrute de sueldo" 
-    | "Cobertura" 
+    | "Permiso"
+    | "Licencias médicas"
+    | "Maternidad"
     | "Cuentas por Cobrar (CXC)" 
-    | "Vales / Faltantes de caja";
+    | "Vales / Faltantes de caja"
+    | "Vacaciones"; // Mantenido exclusivamente para la pestaña de Vacaciones de ley
   fecha_inicio: string;
   cantidad_dias?: number;
+  tiene_cobertura?: boolean;
   id_reloj_cubre?: string;
   monto?: number;       
   cuotas?: number;      
   comentario: string;
   estado: "Procesado" | "Pendiente Aplicación";
 }
-
-const FALLBACK_VALOR_DIA = 1153.57;
 
 function formatMonto(val: number) {
   return "RD$ " + Number(val || 0).toLocaleString("es-DO", {
@@ -132,9 +128,10 @@ export default function IncidenciasView() {
 
   const [nuevo, setNuevo] = useState({
     id_reloj: "12", 
-    tipo: "Licencia Médica" as NovedadIncidencia["tipo"],
+    tipo: "Permiso" as NovedadIncidencia["tipo"],
     fecha_inicio: fechaSistema || "2026-05-21",
-    cantidad_dias: "14",
+    cantidad_dias: "1",
+    tiene_cobertura: false,
     id_reloj_cubre: "Ninguno",
     monto: "0",
     cuotas: "1",
@@ -173,31 +170,32 @@ export default function IncidenciasView() {
     }
   }, [selectedId, novSel]);
 
-  // 🛡️ LÓGICA REFACTORIZADA: Busca el sueldo del colaborador y calcula su valor de día dinámico + cuotas segmentadas
-  const analizarImpactoIncidencia = (idReloj: string, tipo: NovedadIncidencia["tipo"], dias: number = 1, montoTotal: number = 0, cuotas: number = 1) => {
+  // 🧮 LÓGICA DE NEGOCIO Y CÁLCULO DE INCIDENCIAS
+  const analizarImpactoIncidencia = (idReloj: string, tipo: NovedadIncidencia["tipo"], dias: number = 1, montoTotal: number = 0, cuotas: number = 1, tieneCobertura: boolean = false) => {
     const empleado = empleados.find(e => e.id_reloj === idReloj);
     const sueldoBaseEmpleado = empleado ? Number(empleado.sueldo_base) : 27489.60;
     const valorDiaDinamico = sueldoBaseEmpleado / 23.83;
 
     switch (tipo) {
-      case "Falta Injustificada":
-      case "Permiso sin disfrute de sueldo":
-        return { afectaTSS: true, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: `Descuento diario basado en sueldo de ${formatMonto(sueldoBaseEmpleado)}` };
-      case "Tardanza":
-        return { afectaTSS: true, descuentaSalario: true, montoDescuento: montoTotal, label: "Penalización directa por retraso" };
+      case "Permiso":
+        if (tieneCobertura) {
+          return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Permiso Cubierto: No aplica descuento de salario" };
+        } else {
+          return { afectaTSS: true, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: `Permiso no cubierto: Descuento de ${dias} día(s) basado en salario` };
+        }
       case "Vales / Faltantes de caja":
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: montoTotal, label: "Deducción administrativa de caja única" };
+        return { afectaTSS: false, descuentaSalario: true, montoDescuento: montoTotal, label: "Descuento total e inmediato en la misma quincena" };
       case "Cuentas por Cobrar (CXC)":
         const calculoCuota = cuotas > 0 ? (montoTotal / cuotas) : montoTotal;
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: calculoCuota, label: `Monto quincenal amortizado (${cuotas} cuotas restantes)` };
+        return { afectaTSS: false, descuentaSalario: true, montoDescuento: calculoCuota, label: `Cuota quincenal fija amortizada en ${cuotas} pagos` };
       case "Vacaciones":
-        return { afectaTSS: false, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: "Descuento por adelanto de disfrute de ley" };
-      case "Licencia Médica":
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Subsidio SISALRIL Protegido" };
-      case "Licencia Maternidad":
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Maternidad Protegida (Reembolso SISALRIL)" };
+        return { afectaTSS: false, descuentaSalario: true, montoDescuento: dias * valorDiaDinamico, label: "Adelanto financiero por vacaciones liquidadas" };
+      case "Licencias médicas":
+        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Licencia Médica Aprobada: Sueldo base protegido por SISALRIL" };
+      case "Maternidad":
+        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Licencia de Parto: Sueldo íntegro (Sisalril reembolsa a empresa)" };
       default:
-        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Exención de Descuento Legal" };
+        return { afectaTSS: false, descuentaSalario: false, montoDescuento: 0, label: "Exención Contable Regular" };
     }
   };
 
@@ -206,7 +204,7 @@ export default function IncidenciasView() {
     incidencias.forEach(n => {
       const montoNum = Number(n.monto) || 0;
       if (n.tipo === "Vacaciones") vacs++;
-      else if (["Cobertura", "Licencia Médica", "Licencia Maternidad", "Permiso Justificado", "Falta Injustificada", "Tardanza", "Permiso sin disfrute de sueldo"].includes(n.tipo)) asistencias++;
+      else if (["Permiso", "Licencias médicas", "Maternidad"].includes(n.tipo)) asistencias++;
       else if (n.tipo === "Cuentas por Cobrar (CXC)") totalCXC += montoNum;
       else if (n.tipo === "Vales / Faltantes de caja") totalFaltantes += montoNum;
     });
@@ -217,8 +215,8 @@ export default function IncidenciasView() {
     e.preventDefault();
     const tipoFinal = activeTab === "vacaciones" ? "Vacaciones" : nuevo.tipo;
 
-    if (tipoFinal === "Cobertura" && (nuevo.id_reloj_cubre === "Ninguno" || nuevo.id_reloj_cubre === nuevo.id_reloj)) {
-      return alert("❌ Error: Debe especificar un colaborador de reemplazo válido.");
+    if (tipoFinal === "Permiso" && nuevo.tiene_cobertura && nuevo.id_reloj_cubre === "Ninguno") {
+      return alert("❌ Error: Si el permiso es cubierto, debe seleccionar el colaborador de reemplazo.");
     }
 
     const creada: NovedadIncidencia = {
@@ -226,9 +224,10 @@ export default function IncidenciasView() {
       id_reloj: nuevo.id_reloj,
       tipo: tipoFinal,
       fecha_inicio: nuevo.fecha_inicio,
-      cantidad_dias: ["Vacaciones", "Licencia Médica", "Licencia Maternidad", "Permiso Justificado", "Falta Injustificada", "Permiso sin disfrute de sueldo", "Cobertura"].includes(tipoFinal) ? parseInt(nuevo.cantidad_dias, 10) : undefined,
-      id_reloj_cubre: tipoFinal === "Cobertura" ? nuevo.id_reloj_cubre : undefined,
-      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(tipoFinal) ? parseFloat(nuevo.monto) : undefined,
+      cantidad_dias: ["Vacaciones", "Licencias médicas", "Maternidad", "Permiso"].includes(tipoFinal) ? parseInt(nuevo.cantidad_dias, 10) : undefined,
+      tiene_cobertura: tipoFinal === "Permiso" ? nuevo.tiene_cobertura : undefined,
+      id_reloj_cubre: (tipoFinal === "Permiso" && nuevo.tiene_cobertura) ? nuevo.id_reloj_cubre : undefined,
+      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(tipoFinal) ? parseFloat(nuevo.monto) : undefined,
       cuotas: tipoFinal === "Cuentas por Cobrar (CXC)" ? parseInt(nuevo.cuotas, 10) : undefined,
       comentario: nuevo.comentario.trim() || "Sin observaciones administrativas",
       estado: "Pendiente Aplicación"
@@ -238,7 +237,7 @@ export default function IncidenciasView() {
       setIncidencias([creada, ...incidencias]);
       setSelectedId(creada.id);
       setShowAltaForm(false);
-      alert("✅ Registro guardado con éxito.");
+      alert("✅ Registro de incidencia guardado.");
     }
   };
 
@@ -250,6 +249,8 @@ export default function IncidenciasView() {
         cantidad_dias: formFicha.cantidad_dias ? parseInt(String(formFicha.cantidad_dias), 10) : undefined,
         monto: formFicha.monto ? parseFloat(String(formFicha.monto)) : undefined,
         cuotas: formFicha.cuotas ? parseInt(String(formFicha.cuotas), 10) : undefined,
+        tiene_cobertura: formFicha.tipo === "Permiso" ? formFicha.tiene_cobertura : undefined,
+        id_reloj_cubre: (formFicha.tipo === "Permiso" && formFicha.tiene_cobertura) ? formFicha.id_reloj_cubre : undefined,
       };
 
       const loteActualizado = incidencias.map(n => n.id === selectedId ? { ...n, ...fichaFormateada } as NovedadIncidencia : n);
@@ -266,7 +267,7 @@ export default function IncidenciasView() {
   };
 
   const eliminarIncidenciaRapido = (id: string) => {
-    if (!setIncidencias || !confirm("¿Está seguro de que desea eliminar este registro de incidencia de forma permanente?")) return;
+    if (!setIncidencias || !confirm("¿Desea eliminar esta incidencia?")) return;
     const loteFiltrado = incidencias.filter(n => n.id !== id);
     setIncidencias(loteFiltrado);
     setSelectedId("");
@@ -289,8 +290,8 @@ export default function IncidenciasView() {
   }, [incidencias, activeTab, search, filterTipo, filterSucursal, empleados]);
 
   const cardClasses = "bg-white border border-slate-100/80 rounded-2xl shadow-[0_4px_20px_rgba(241,245,249,0.6)]";
-  const inputClasses = "w-full pl-9 pr-3.5 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs outline-none focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700 disabled:opacity-60 disabled:bg-slate-50/50";
-  const selectClasses = "w-full pl-9 pr-8 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs font-medium outline-none cursor-pointer focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700 appearance-none disabled:opacity-60 disabled:bg-slate-50/50";
+  const inputClasses = "w-full pl-9 pr-3.5 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs outline-none focus:bg-white focus:border-emerald-500/80 focus:ring-4 focus:ring-emerald-500/5 transition-all text-slate-700";
+  const selectClasses = "w-full pl-9 pr-8 py-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs font-medium outline-none cursor-pointer focus:bg-white focus:border-emerald-500/80 transition-all text-slate-700 appearance-none";
 
   return (
     <div className="flex gap-1 text-slate-700 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none overflow-hidden font-sans">
@@ -298,37 +299,36 @@ export default function IncidenciasView() {
       {/* CUERPO IZQUIERDO */}
       <div className="flex-1 flex flex-col gap-6 min-w-0 pr-2">
         
-        {/* RESÚMENES */}
+        {/* INDICADORES */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vacaciones</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vacaciones Activas</span>
               <span className="text-xl font-bold text-slate-800 tracking-tight mt-1 block">{resumenes.vacs} Colabs.</span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50/60 text-emerald-600 flex items-center justify-center border border-emerald-100/50"><Palmtree className="w-4 h-4" /></div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100/50"><Palmtree className="w-4 h-4" /></div>
           </div>
           
-          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Asistencias / Lic.</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Novedades Operativas</span>
               <span className="text-xl font-bold text-slate-700 tracking-tight mt-1 block">{resumenes.asistencias} Regs.</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><UserCheck className="w-4 h-4" /></div>
           </div>
 
-          <div className={`${cardClasses} p-5 flex items-center justify-between bg-gradient-to-br from-white to-slate-50/30`}>
+          <div className={`${cardClasses} p-5 flex items-center justify-between`}>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Faltantes y Avances</span>
-              <span className="text-sm font-bold text-slate-700 font-mono mt-2 block tracking-wide">{formatMonto(resumenes.totalFaltantes)}</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Vales / Faltantes quincena</span>
+              <span className="text-sm font-bold text-slate-700 font-mono mt-2 block">{formatMonto(resumenes.totalFaltantes)}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center border border-slate-100"><Receipt className="w-4 h-4" /></div>
           </div>
 
-          <div className="bg-[#2B4C5E] border border-[#233F4E] rounded-2xl p-5 flex items-center justify-between shadow-[0_8px_30px_rgba(35,63,78,0.15)] relative overflow-hidden">
-            <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/5 rounded-full blur-xl pointer-events-none"></div>
+          <div className="bg-[#2B4C5E] rounded-2xl p-5 flex items-center justify-between shadow-md relative overflow-hidden">
             <div>
-              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Balance CXC Total</span>
-              <span className="text-sm font-bold text-white font-mono mt-2 block tracking-wide">{formatMonto(resumenes.totalCXC)}</span>
+              <span className="text-[10px] font-bold text-slate-300/80 uppercase tracking-widest block">Balance General CXC</span>
+              <span className="text-sm font-bold text-white font-mono mt-2 block">{formatMonto(resumenes.totalCXC)}</span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-white/10 text-emerald-400 flex items-center justify-center"><DollarSign className="w-4 h-4" /></div>
           </div>
@@ -340,13 +340,13 @@ export default function IncidenciasView() {
             type="button" onClick={() => { setActiveTab("general"); setFilterTipo("Todos"); }}
             className={`px-5 py-3 font-bold text-xs transition-all border-b-2 -mb-px flex items-center gap-2 ${activeTab === "general" ? "border-[#42A873] text-[#2B4C5E]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
           >
-            <Clock className="w-4 h-4" /> Gestión de Incidencias y Retenciones TSS
+            <Clock className="w-4 h-4" /> Registro de Incidencias Operativas
           </button>
           <button 
             type="button" onClick={() => { setActiveTab("vacaciones"); setFilterTipo("Vacaciones"); }}
             className={`px-5 py-3 font-bold text-xs transition-all border-b-2 -mb-px flex items-center gap-2 ${activeTab === "vacaciones" ? "border-[#42A873] text-[#2B4C5E]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
           >
-            <Palmtree className="w-4 h-4" /> Módulo Independiente Vacaciones (Lunes a Sábado)
+            <Palmtree className="w-4 h-4" /> Módulo Vacaciones (Lunes a Sábado)
           </button>
         </div>
 
@@ -354,34 +354,30 @@ export default function IncidenciasView() {
         <div className={`${cardClasses} p-4 flex flex-col gap-3 bg-white`}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 w-full items-center">
             <div className="relative w-full">
-              <span className="absolute left-3 top-3 text-slate-400 pointer-events-none"><Search className="w-4 h-4" /></span>
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por colaborador o ID..." className={inputClasses} />
+              <span className="absolute left-3 top-3 text-slate-400"><Search className="w-4 h-4" /></span>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar colaborador..." className={inputClasses} />
             </div>
 
             {activeTab === "general" ? (
               <div className="relative w-full">
-                <span className="absolute left-3 top-3 text-slate-400 pointer-events-none"><FileSpreadsheet className="w-4 h-4" /></span>
+                <span className="absolute left-3 top-3 text-slate-400"><FileSpreadsheet className="w-4 h-4" /></span>
                 <select value={filterTipo} onChange={(e) => setFilterTipo(e.target.value)} className={selectClasses}>
-                  <option value="Todos">Todas las Novedades</option>
-                  <option value="Licencia Médica">Licencia Médica</option>
-                  <option value="Licencia Maternidad">Licencia Maternidad</option>
-                  <option value="Permiso Justificado">Permiso Justificado</option>
-                  <option value="Falta Injustificada">Falta Injustificada</option>
-                  <option value="Tardanza">Tardanza</option>
-                  <option value="Permiso sin disfrute de sueldo">Permiso sin disfrute</option>
-                  <option value="Cobertura">Cobertura</option>
+                  <option value="Todos">Todos los conceptos</option>
+                  <option value="Permiso">Permisos</option>
+                  <option value="Licencias médicas">Licencias médicas</option>
+                  <option value="Maternidad">Maternidad</option>
                   <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                  <option value="Vales / Faltantes de caja">Vales / Faltantes</option>
+                  <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
                 </select>
               </div>
             ) : (
               <div className="bg-emerald-50 text-[#399665] px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-emerald-100">
-                <Palmtree className="w-4 h-4" /> Calendario de Vacaciones de Ley
+                <Palmtree className="w-4 h-4" /> Rol de Vacaciones de Ley
               </div>
             )}
 
             <div className="relative w-full">
-              <span className="absolute left-3 top-3 text-slate-400 pointer-events-none"><MapPin className="w-3.5 h-3.5" /></span>
+              <span className="absolute left-3 top-3 text-slate-400"><MapPin className="w-3.5 h-3.5" /></span>
               <select value={filterSucursal} onChange={(e) => setFilterSucursal(e.target.value)} className={selectClasses}>
                 <option value="Todos">Todas las Sucursales</option>
                 {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
@@ -389,12 +385,11 @@ export default function IncidenciasView() {
             </div>
             
             <button 
-              type="button" 
-              onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); }}
-              className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 ${showAltaForm ? "bg-red-50 text-red-600 hover:bg-red-100/70" : "bg-slate-700 text-white hover:bg-slate-600"}`}
+              type="button" onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); }}
+              className={`text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 ${showAltaForm ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-slate-700 text-white hover:bg-slate-600"}`}
             >
               {showAltaForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              {showAltaForm ? "Cancelar Alta" : "Crear Registro"}
+              {showAltaForm ? "Cancelar Registro" : "Crear Incidencia"}
             </button>
           </div>
         </div>
@@ -402,23 +397,24 @@ export default function IncidenciasView() {
         {/* TABLA MAESTRA */}
         <div className={`${cardClasses} overflow-hidden bg-white`}>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs table-fixed min-w-[1250px]">
+            <table className="w-full text-left text-xs table-fixed min-w-[1200px]">
               <thead>
                 <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 h-11">
                   <th className="p-2.5 pl-6 w-20">ID Reloj</th>
                   <th className="p-2.5 w-56">Colaborador / Sucursal</th>
-                  <th className="p-2.5 w-48">Tipo Novedad / Regla TSS</th>
+                  <th className="p-2.5 w-44">Tipo Incidencia</th>
                   <th className="p-2.5 w-28 text-center">Fecha Inicio</th>
-                  <th className="p-2.5 w-28 text-center">{activeTab === "vacaciones" ? "Días Laborables" : "Duración / Cuotas"}</th>
-                  <th className="p-2.5 w-64">Impacto Quincenal Real</th>
-                  <th className="p-2.5 text-center w-32">Estado Corte</th>
+                  <th className="p-2.5 w-28 text-center">{activeTab === "vacaciones" ? "Días Ley" : "Duración / Cuotas"}</th>
+                  <th className="p-2.5 w-68">Impacto Quincenal / Logística de Cobertura</th>
+                  <th className="p-2.5 text-center w-28">Estado Nom.</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-600">
                 {filteredNovedades.map((n) => {
                   const isSelected = !showAltaForm && selectedId === n.id;
                   const emp = empleados.find(e => e.id_reloj === n.id_reloj);
-                  const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias, n.monto, n.cuotas);
+                  const empCubre = n.id_reloj_cubre ? empleados.find(e => e.id_reloj === n.id_reloj_cubre) : null;
+                  const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias, n.monto, n.cuotas, n.tiene_cobertura);
 
                   return (
                     <tr 
@@ -427,21 +423,16 @@ export default function IncidenciasView() {
                     >
                       <td className={`p-2.5 pl-6 font-mono text-slate-400 font-semibold ${isSelected && "!pl-5 text-emerald-600"}`}>{n.id_reloj}</td>
                       <td className="p-2.5">
-                        <div className="font-bold text-slate-700 uppercase truncate">{emp?.nombre || "No Indexado"}</div>
-                        <div className="text-[10px] text-slate-400 font-medium truncate uppercase">{emp?.sucursal_principal}</div>
+                        <div className="font-bold text-slate-700 uppercase truncate">{emp?.nombre || "No Registrado"}</div>
+                        <div className="text-[10px] text-slate-400 uppercase truncate">{emp?.sucursal_principal}</div>
                       </td>
-                      <td className="p-2.5">
-                        <div className="font-bold text-slate-700 text-xs truncate">{n.tipo}</div>
-                        <div className={`text-[9px] font-medium mt-0.5 ${imp.afectaTSS ? "text-amber-600" : "text-emerald-600"}`}>
-                          {n.tipo === "Vacaciones" ? "🛡️ Retención TSS Intacta" : imp.afectaTSS ? "⚠️ Reduce Base Cotizable" : "🛡️ TSS Protegida Activa"}
-                        </div>
-                      </td>
+                      <td className="p-2.5 font-bold text-slate-700">{n.tipo}</td>
                       <td className="p-2.5 text-center font-mono text-slate-500">{n.fecha_inicio}</td>
-                      <td className="p-2.5 text-center font-mono text-xs">
+                      <td className="p-2.5 text-center font-mono">
                         {n.tipo === "Cuentas por Cobrar (CXC)" ? (
-                          <span className="font-bold text-[#D97706]">{n.cuotas} Qs</span>
-                        ) : ["Vales / Faltantes de caja", "Tardanza"].includes(n.tipo) ? (
-                          <span className="text-slate-400 text-[10px]">Corte Único</span>
+                          <span className="font-bold text-amber-600">{n.cuotas} Cuotas</span>
+                        ) : ["Vales / Faltantes de caja"].includes(n.tipo) ? (
+                          <span className="text-slate-400 text-[10px]">Cierre Completo</span>
                         ) : (
                           <span className="font-bold text-slate-800">{n.cantidad_dias} Días</span>
                         )}
@@ -450,22 +441,25 @@ export default function IncidenciasView() {
                         {n.tipo === "Vacaciones" ? (
                           (() => {
                             const log = calcularFechaFinLaborable(n.fecha_inicio, Number(n.cantidad_dias) || 1);
-                            const sueldoBaseColab = emp ? Number(emp.sueldo_base) : 27489.60;
-                            const montoAdelanto = (Number(n.cantidad_dias) || 1) * (sueldoBaseColab / 23.83);
+                            const sueldo = emp ? Number(emp.sueldo_base) : 27489.60;
                             return (
                               <div className="flex flex-col">
-                                <span className="text-slate-500">Regreso: <span className="font-mono font-bold text-slate-700">{log}</span></span>
-                                <span className="text-[10px] text-emerald-600 font-mono font-bold">Adelanto Dinámico: {formatMonto(montoAdelanto)}</span>
+                                <span className="text-slate-500">Regreso: <span className="font-bold text-slate-700">{log}</span></span>
+                                <span className="text-[10px] text-emerald-600 font-mono font-bold">Adelanto: {formatMonto((Number(n.cantidad_dias) || 1) * (sueldo / 23.83))}</span>
                               </div>
                             );
                           })()
+                        ) : n.tipo === "Permiso" && n.tiene_cobertura ? (
+                          <span className="text-emerald-700 font-medium bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg">
+                            Cubierto por: <strong className="uppercase">{empCubre?.nombre || "ID: " + n.id_reloj_cubre}</strong>
+                          </span>
                         ) : imp.descuentaSalario ? (
                           <div className="flex flex-col">
                             <span className="text-red-500 font-mono font-bold">Deducción Q: -{formatMonto(imp.montoDescuento)}</span>
-                            <span className="text-[9px] text-slate-400 truncate block max-w-[220px]">{imp.label}</span>
+                            <span className="text-[9px] text-slate-400 truncate block max-w-[240px]">{imp.label}</span>
                           </div>
                         ) : (
-                          <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 text-[10px] truncate block max-w-[240px]">
+                          <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100 text-[10px]">
                             {imp.label}
                           </span>
                         )}
@@ -483,246 +477,228 @@ export default function IncidenciasView() {
       </div>
 
       {/* DRAG RESIZE GRIP */}
-      <div 
-        onMouseDown={startResizing}
-        className="w-2.5 hover:w-3 bg-transparent hover:bg-slate-200/60 active:bg-slate-300 rounded-full cursor-col-resize transition-all self-stretch shrink-0 mx-0.5 relative z-10"
-      />
+      <div onMouseDown={startResizing} className="w-2 bg-transparent hover:bg-slate-200/60 active:bg-slate-300 rounded-full cursor-col-resize transition-all self-stretch shrink-0 mx-0.5 relative z-10" />
 
       {/* PANEL EXPEDIENTE LATERAL */}
-      <div 
-        style={{ width: `${panelWidth}px` }}
-        className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto border-slate-200/50 shrink-0 select-text`}
-      >
+      <div style={{ width: `${panelWidth}px` }} className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto shrink-0 select-text`}>
         {showAltaForm ? (
-          /* FORMULARIO DE ALTA */
+          /* REGISTRO NUEVO */
           <form onSubmit={ejecutarAlta} className="flex flex-col gap-4 text-xs">
             <div className="flex flex-col gap-1 border-b border-slate-100 pb-3">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Capturar Novedad</h4>
-              <span className="text-[10px] text-slate-400">Sección: {activeTab === "vacaciones" ? "Vacaciones Anuales" : "Incidencias Operativas"}</span>
+              <span className="text-[10px] text-slate-400">Canalización autorizada de incidencias</span>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Colaborador</label>
-              <select value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} className={`${selectClasses} !pl-3.5 bg-white`}>
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Colaborador</label>
+              <select value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} className={`${selectClasses} !pl-3 bg-white`}>
                 {empleados.map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre.toUpperCase()} (ID: {emp.id_reloj})</option>)}
               </select>
             </div>
 
             {activeTab === "general" ? (
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Concepto Contable (RD)</label>
-                <select value={nuevo.tipo} onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1"})} className={`${selectClasses} !pl-3.5 bg-white`}>
-                  <option value="Licencia Médica">Licencia Médica</option>
-                  <option value="Licencia Maternidad">Licencia Maternidad</option>
-                  <option value="Permiso Justificado">Permiso Justificado</option>
-                  <option value="Falta Injustificada">Falta Injustificada (Descuento Diario)</option>
-                  <option value="Tardanza">Tardanza (Descuento Monetario)</option>
-                  <option value="Permiso sin disfrute de sueldo">Permiso sin disfrute de sueldo</option>
-                  <option value="Cobertura">Cobertura (Asistencia Cubierta)</option>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto de Incidencia</label>
+                <select value={nuevo.tipo} onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1", tiene_cobertura: false, id_reloj_cubre: "Ninguno"})} className={`${selectClasses} !pl-3 bg-white`}>
+                  <option value="Permiso">Permiso</option>
+                  <option value="Licencias médicas">Licencias médicas</option>
+                  <option value="Maternidad">Maternidad</option>
                   <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
                   <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
                 </select>
               </div>
             ) : (
-              <div className="bg-emerald-50 text-[#399665] p-2.5 rounded-xl text-[10px] font-bold border border-emerald-100 font-mono text-center">
-                MÓDULO DE VACACIONES: CRONOGRAMA LUNES A SÁBADO
-              </div>
+              <div className="bg-emerald-50 text-[#399665] p-2.5 rounded-xl text-[10px] font-bold text-center">PLANIFICADOR DE VACACIONES (LUNES A SÁBADO)</div>
             )}
 
             <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Fecha de Inicio / Salida</label>
-              <input type="date" required className={`${inputClasses} !pl-3.5 font-mono`} value={nuevo.fecha_inicio} onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} />
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Fecha de Efectividad</label>
+              <input type="date" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.fecha_inicio} onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} />
             </div>
 
-            {((activeTab === "vacaciones" || ["Licencia Médica", "Licencia Maternidad", "Permiso Justificado", "Falta Injustificada", "Permiso sin disfrute de sueldo", "Cobertura"].includes(nuevo.tipo))) ? (
+            {/* LÓGICA DE COBERTURA DINÁMICA EXCLUSIVA PARA PERMISOS */}
+            {activeTab === "general" && nuevo.tipo === "Permiso" && (
+              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2.5">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none text-slate-700 font-bold">
+                  <input type="checkbox" className="w-4 h-4 rounded-lg border-slate-300 text-emerald-600 accent-[#42A873]" checked={nuevo.tiene_cobertura} onChange={e => setNuevo({...nuevo, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
+                  <span>¿El turno fue cubierto por otro empleado?</span>
+                </label>
+                
+                {nuevo.tiene_cobertura && (
+                  <div className="flex flex-col gap-1 animate-fadeIn">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase">Colaborador de Reemplazo</label>
+                    <select value={nuevo.id_reloj_cubre} onChange={e => setNuevo({...nuevo, id_reloj_cubre: e.target.value})} className={`${selectClasses} !pl-3 bg-white`}>
+                      <option value="Ninguno">-- Seleccionar Colaborador --</option>
+                      {empleados.filter(em => em.id_reloj !== nuevo.id_reloj).map(emp => (
+                        <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre.toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {((activeTab === "vacaciones" || ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo))) ? (
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Cantidad de Días</label>
-                <input type="number" min="1" required className={`${inputClasses} !pl-3.5 font-mono`} value={nuevo.cantidad_dias} onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} />
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Días de Extensión</label>
+                <input type="number" min="1" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.cantidad_dias} onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} />
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Monto Total (RD$)</label>
-                  <input type="number" min="1" step="0.01" required className={`${inputClasses} !pl-3.5 font-mono`} value={nuevo.monto} onChange={e => setNuevo({...nuevo, monto: e.target.value})} />
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Monto Total (RD$)</label>
+                  <input type="number" min="1" step="0.01" required className={`${inputClasses} !pl-3 font-mono`} value={nuevo.monto} onChange={e => setNuevo({...nuevo, monto: e.target.value})} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Cuotas</label>
-                  <input type="number" min="1" disabled={nuevo.tipo !== "Cuentas por Cobrar (CXC)"} className={`${inputClasses} !pl-3.5 font-mono bg-white disabled:opacity-40`} value={nuevo.tipo !== "Cuentas por Cobrar (CXC)" ? "1" : nuevo.cuotas} onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} />
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Dividir en Cuotas</label>
+                  <input type="number" min="1" disabled={nuevo.tipo !== "Cuentas por Cobrar (CXC)"} className={`${inputClasses} !pl-3 font-mono disabled:opacity-40 bg-white`} value={nuevo.tipo !== "Cuentas por Cobrar (CXC)" ? "1" : nuevo.cuotas} onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} />
                 </div>
               </div>
             )}
 
-            {/* 🌴 Simulación Dinámica de Vacaciones */}
-            {activeTab === "vacaciones" && (() => {
-              const currentColab = empleados.find(e => e.id_reloj === nuevo.id_reloj);
-              const sueldoBaseColab = currentColab ? Number(currentColab.sueldo_base) : 27489.60;
-              const dias = parseInt(nuevo.cantidad_dias, 10) || 14;
-              const fechaFin = calcularFechaFinLaborable(nuevo.fecha_inicio, dias);
-              const montoAdelanto = dias * (sueldoBaseColab / 23.83);
-
-              return (
-                <div className="bg-emerald-50/60 border border-emerald-200 p-3 rounded-xl flex flex-col gap-1 text-[11px]">
-                  <div className="font-bold text-[#399665] flex items-center gap-1 uppercase tracking-wider text-[10px]"><Palmtree className="w-3.5 h-3.5" /> Liquidación Basada en Perfil</div>
-                  <div className="text-slate-600 font-mono mt-1 space-y-0.5">
-                    <div>Sueldo Base: <span className="font-bold text-slate-900">{formatMonto(sueldoBaseColab)}</span></div>
-                    <div>Regreso Técnico: <span className="font-bold text-slate-900">{fechaFin}</span></div>
-                    <div>Adelanto Q: <span className="font-bold text-emerald-700">{formatMonto(montoAdelanto)}</span></div>
-                  </div>
-                </div>
-              );
-            })()}
-
             {activeTab === "general" && (() => {
-              const infoImpacto = analizarImpactoIncidencia(nuevo.id_reloj, nuevo.tipo, parseInt(nuevo.cantidad_dias, 10) || 1, parseFloat(nuevo.monto) || 0, parseInt(nuevo.cuotas, 10) || 1);
+              const info = analizarImpactoIncidencia(nuevo.id_reloj, nuevo.tipo, parseInt(nuevo.cantidad_dias, 10) || 1, parseFloat(nuevo.monto) || 0, parseInt(nuevo.cuotas, 10) || 1, nuevo.tiene_cobertura);
               return (
-                <div className={`p-3 rounded-xl border text-[11px] ${infoImpacto.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                <div className={`p-3 rounded-xl border text-[11px] ${info.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
                   <div className="font-bold flex items-center gap-1 text-[10px] uppercase">
-                    {infoImpacto.descuentaSalario ? <TrendingDown className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
-                    {infoImpacto.descuentaSalario ? "Corte Quincenal Activo" : "Exento de Descuento"}
+                    {info.descuentaSalario ? <TrendingDown className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                    Impacto Quincenal Previsto
                   </div>
-                  <div className="mt-1 font-medium">{infoImpacto.descuentaSalario ? `Monto quincenal real: ${formatMonto(infoImpacto.montoDescuento)}` : infoImpacto.label}</div>
+                  <div className="mt-1 font-medium">{info.descuentaSalario ? `Monto a deducir en esta quincena: ${formatMonto(info.montoDescuento)}` : info.label}</div>
                 </div>
               );
             })()}
 
             <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Justificación o Nota Administrativa</label>
-              <input type="text" placeholder="Observaciones de RRHH..." className={`${inputClasses} !pl-3.5`} value={nuevo.comentario} onChange={e => setNuevo({...nuevo, comentario: e.target.value})} />
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Comentario / Justificación</label>
+              <input type="text" placeholder="Observaciones de RRHH..." className={`${inputClasses} !pl-3`} value={nuevo.comentario} onChange={e => setNuevo({...nuevo, comentario: e.target.value})} />
             </div>
 
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-              <button type="button" onClick={() => setShowAltaForm(false)} className="border border-slate-200 text-slate-500 font-semibold py-2.5 rounded-xl text-center hover:bg-slate-50 transition-colors">Cancelar</button>
-              <button type="submit" className="bg-slate-700 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-1 hover:bg-slate-600 transition-all"><Save className="w-4 h-4" /> Registrar</button>
+              <button type="button" onClick={() => setShowAltaForm(false)} className="border border-slate-200 text-slate-500 font-semibold py-2 rounded-xl">Cancelar</button>
+              <button type="submit" className="bg-slate-700 text-white font-bold py-2 rounded-xl flex items-center justify-center gap-1"><Save className="w-4 h-4" /> Registrar</button>
             </div>
           </form>
         ) : novSel ? (
-          /* EXPEDIENTE DETALLADO CON RETENCIONES AMORTIZADAS DINÁMICAS */
+          /* EXPEDIENTE DETALLADO */
           <form onSubmit={guardarFicha} className="flex flex-col gap-4 text-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Registro</span>
-                <h4 className="font-bold text-slate-800 text-sm mt-0.5 tracking-tight">{novSel.id} · {novSel.tipo}</h4>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Expediente Único</span>
+                <h4 className="font-bold text-slate-800 text-sm mt-0.5">{novSel.id} · {novSel.tipo}</h4>
               </div>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg border ${novSel.estado === "Pendiente Aplicación" ? "bg-amber-50 text-[#F59E0B] border-amber-100" : "bg-emerald-50 text-[#10B981] border-emerald-100"}`}>
-                {novSel.estado === "Pendiente Application" ? "Pendiente" : "Aplicado"}
-              </span>
             </div>
 
-            {/* ACCIONES RÁPIDAS ADMINISTRADOR */}
+            {/* ACCIONES DE RESPUESTA RÁPIDA */}
             <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2">
-              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Acciones de Resolución Rápida</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Estado y Cierre de Incidencia</span>
               <div className="grid grid-cols-2 gap-2">
                 {novSel.estado === "Pendiente Aplicación" ? (
-                  <button 
-                    type="button" 
-                    onClick={() => cambiarEstadoRapido(novSel.id, "Procesado")}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all shadow-sm"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" /> Aprobar y Cerrar
-                  </button>
+                  <button type="button" onClick={() => cambiarEstadoRapido(novSel.id, "Procesado")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded-lg flex items-center justify-center gap-1 shadow-sm"><CheckCircle className="w-3.5 h-3.5" /> Aplicar</button>
                 ) : (
-                  <button 
-                    type="button" 
-                    onClick={() => cambiarEstadoRapido(novSel.id, "Pendiente Aplicación")}
-                    className="border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold py-2 rounded-lg flex items-center justify-center gap-1 transition-all"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5" /> Reabrir Caso
-                  </button>
+                  <button type="button" onClick={() => cambiarEstadoRapido(novSel.id, "Pendiente Aplicación")} className="border border-amber-300 bg-amber-50 text-amber-700 py-1.5 rounded-lg flex items-center justify-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Reabrir</button>
                 )}
-                <button 
-                  type="button" 
-                  onClick={() => eliminarIncidenciaRapido(novSel.id)}
-                  className="bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2 rounded-lg flex items-center justify-center gap-1 border border-red-200/60 transition-all"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
-                </button>
+                <button type="button" onClick={() => eliminarIncidenciaRapido(novSel.id)} className="bg-red-50 text-red-600 font-bold py-1.5 rounded-lg border border-red-200 flex items-center justify-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Eliminar</button>
               </div>
             </div>
 
             <div className="w-full">
               {!isEditing ? (
-                <button type="button" onClick={() => setIsEditing(true)} className="w-full border border-slate-200 text-slate-600 bg-slate-50/40 hover:bg-slate-50 font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
-                  <Pencil className="w-3.5 h-3.5 text-slate-400" /> Modificar Datos Base
+                <button type="button" onClick={() => setIsEditing(true)} className="w-full border border-slate-200 text-slate-600 bg-slate-50/40 py-2 rounded-xl flex items-center justify-center gap-1.5 font-bold">
+                  <Pencil className="w-3.5 h-3.5 text-slate-400" /> Editar Registro
                 </button>
               ) : (
                 <div className="flex gap-2.5 w-full">
-                  <button type="button" onClick={() => setIsEditing(false)} className="border border-slate-200 text-slate-400 py-2.5 rounded-xl flex-1 text-center font-semibold hover:bg-slate-50 transition-colors">Cancelar</button>
-                  <button type="submit" className="bg-[#2B4C5E] text-white py-2.5 rounded-xl flex-1 flex items-center justify-center gap-1.5 font-bold hover:bg-[#1E3542] transition-all"><Save className="w-3.5 h-3.5" /> Guardar Cambios</button>
+                  <button type="button" onClick={() => setIsEditing(false)} className="border border-slate-200 text-slate-400 py-2 rounded-xl flex-1 text-center font-semibold">Cancelar</button>
+                  <button type="submit" className="bg-[#2B4C5E] text-white py-2 rounded-xl flex-1 flex items-center justify-center gap-1.5 font-bold"><Save className="w-3.5 h-3.5" /> Guardar</button>
                 </div>
               )}
             </div>
 
-            <div className="bg-slate-50 border border-slate-200/50 p-3 rounded-xl flex flex-col gap-1.5 text-[11px] font-medium text-slate-500">
-              <div>Reloj ID: <strong className="font-mono text-slate-800">{novSel.id_reloj}</strong></div>
-              <div className="truncate">Colaborador: <strong className="text-slate-800 font-bold uppercase">{empAsociado ? empAsociado.nombre : "Sin indexar"}</strong></div>
-              <div>Sueldo Base Registrado: <strong className="text-slate-800 font-mono">{formatMonto(empAsociado ? Number(empAsociado.sueldo_base) : 27489.60)}</strong></div>
+            <div className="bg-slate-50 border border-slate-200/50 p-3 rounded-xl flex flex-col gap-1 text-[11px] text-slate-500">
+              <div>Empleado Reloj ID: <strong className="font-mono text-slate-800">{novSel.id_reloj}</strong></div>
+              <div className="truncate">Nombre: <strong className="text-slate-800 font-bold uppercase">{empAsociado?.nombre || "Sin indexar"}</strong></div>
+              <div>Sueldo Base Mensual: <strong className="text-slate-800 font-mono">{formatMonto(empAsociado ? Number(empAsociado.sueldo_base) : 27489.60)}</strong></div>
             </div>
 
             {novSel.tipo !== "Vacaciones" && (
               <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Concepto Contable</label>
-                <select disabled={!isEditing} value={isEditing ? formFicha.tipo : novSel.tipo} onChange={(e) => setFormFicha({ ...formFicha, tipo: e.target.value as any, monto: 0, cuotas: 1, cantidad_dias: 1 })} className={selectClasses}>
-                  <option value="Licencia Médica">Licencia Médica</option>
-                  <option value="Licencia Maternidad">Licencia Maternidad</option>
-                  <option value="Permiso Justificado">Permiso Justificado</option>
-                  <option value="Falta Injustificada">Falta Injustificada</option>
-                  <option value="Tardanza">Tardanza</option>
-                  <option value="Permiso sin disfrute de sueldo">Permiso sin disfrute de sueldo</option>
-                  <option value="Cobertura">Cobertura</option>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto</label>
+                <select disabled={!isEditing} value={isEditing ? formFicha.tipo : novSel.tipo} onChange={(e) => setFormFicha({ ...formFicha, tipo: e.target.value as any, monto: 0, cuotas: 1, cantidad_dias: 1, tiene_cobertura: false, id_reloj_cubre: "Ninguno" })} className={selectClasses}>
+                  <option value="Permiso">Permiso</option>
+                  <option value="Licencias médicas">Licencias médicas</option>
+                  <option value="Maternidad">Maternidad</option>
                   <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
                   <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
                 </select>
               </div>
             )}
 
-            {(isEditing ? ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(formFicha.tipo || "") : ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(novSel.tipo)) ? (
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+            {/* CONTROL DE PARÁMETROS EDITABLES DE COBERTURA */}
+            {formFicha.tipo === "Permiso" || (!isEditing && novSel.tipo === "Permiso") && (
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 font-bold">
+                  <input type="checkbox" disabled={!isEditing} className="w-4 h-4 rounded text-emerald-600 focus:ring-0" checked={isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura} onChange={e => setFormFicha({...formFicha, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
+                  <span>¿Turno Cubierto?</span>
+                </label>
+                {(isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura) && (
+                  <div className="flex flex-col gap-1 mt-1">
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">Reemplazo Autorizado</label>
+                    <select disabled={!isEditing} value={isEditing ? formFicha.id_reloj_cubre : novSel.id_reloj_cubre} onChange={e => setFormFicha({...formFicha, id_reloj_cubre: e.target.value})} className={selectClasses}>
+                      <option value="Ninguno">-- Seleccionar --</option>
+                      {empleados.map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(isEditing ? ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(formFicha.tipo || "") : ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(novSel.tipo)) ? (
+              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Monto Total</label>
-                  <input type="number" step="0.01" disabled={!isEditing} value={isEditing ? (formFicha.monto ?? 0) : (novSel.monto ?? 0)} onChange={(e) => setFormFicha({ ...formFicha, monto: parseFloat(e.target.value) || 0 })} className={`${inputClasses} !pl-3.5 bg-white font-mono`} />
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Monto Total</label>
+                  <input type="number" step="0.01" disabled={!isEditing} value={isEditing ? (formFicha.monto ?? 0) : (novSel.monto ?? 0)} onChange={(e) => setFormFicha({ ...formFicha, monto: parseFloat(e.target.value) || 0 })} className={`${inputClasses} !pl-3 bg-white font-mono`} />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Cuotas</label>
-                  <input type="number" min="1" disabled={!isEditing || (isEditing ? formFicha.tipo !== "Cuentas por Cobrar (CXC)" : novSel.tipo !== "Cuentas por Cobrar (CXC)")} value={isEditing ? (formFicha.cuotas ?? 1) : (novSel.cuotas ?? 1)} onChange={(e) => setFormFicha({ ...formFicha, cuotas: parseInt(e.target.value, 10) || 1 })} className={`${inputClasses} !pl-3.5 bg-white disabled:opacity-40 font-mono`} />
+                  <label className="text-[9px] font-bold text-slate-400 uppercase">Cuotas</label>
+                  <input type="number" min="1" disabled={!isEditing || (isEditing ? formFicha.tipo !== "Cuentas por Cobrar (CXC)" : novSel.tipo !== "Cuentas por Cobrar (CXC)")} value={isEditing ? (formFicha.cuotas ?? 1) : (novSel.cuotas ?? 1)} onChange={(e) => setFormFicha({ ...formFicha, cuotas: parseInt(e.target.value, 10) || 1 })} className={`${inputClasses} !pl-3 bg-white font-mono`} />
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Duración (Días)</label>
+                <label className="text-[9px] font-bold text-slate-400 uppercase">Duración Temporal (Días)</label>
                 <input type="number" min="1" disabled={!isEditing} value={isEditing ? (formFicha.cantidad_dias ?? 1) : (novSel.cantidad_dias ?? 1)} onChange={(e) => setFormFicha({ ...formFicha, cantidad_dias: parseInt(e.target.value, 10) || 1 })} className={`${inputClasses} font-mono`} />
               </div>
             )}
 
-            {/* 🛡️ Alerta de Impacto en Expediente Lateral con Lógica Dinámica */}
+            {/* IMPACTO REAL */}
             {(() => {
-              const tipoActivo = isEditing ? formFicha.tipo : novSel.tipo;
-              const diasActivos = isEditing ? formFicha.cantidad_dias : novSel.cantidad_dias;
-              const montoActivo = isEditing ? formFicha.monto : novSel.monto;
-              const cuotasActivas = isEditing ? formFicha.cuotas : novSel.cuotas;
+              const tActivo = isEditing ? formFicha.tipo : novSel.tipo;
+              const dActivos = isEditing ? formFicha.cantidad_dias : novSel.cantidad_dias;
+              const mActivo = isEditing ? formFicha.monto : novSel.monto;
+              const cActivas = isEditing ? formFicha.cuotas : novSel.cuotas;
+              const cobActiva = isEditing ? formFicha.tiene_cobertura : novSel.tiene_cobertura;
 
-              const infoImpacto = analizarImpactoIncidencia(novSel.id_reloj, tipoActivo as any, diasActivos, montoActivo, cuotasActivas);
+              const info = analizarImpactoIncidencia(novSel.id_reloj, tActivo as any, dActivos, mActivo, cActivas, cobActiva);
               return (
-                <div className={`p-3 rounded-xl border text-[11px] ${tipoActivo === "Vacaciones" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : infoImpacto.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
-                  <div className="font-bold uppercase tracking-wide flex items-center gap-1 text-[10px]">
-                    {tipoActivo === "Vacaciones" ? <Palmtree className="w-3.5 h-3.5" /> : infoImpacto.descuentaSalario ? <TrendingDown className="w-3.5 h-3.5" /> : <UserCheck className="w-3.5 h-3.5" />}
-                    {tipoActivo === "Vacaciones" ? "Liquidación Interna Vacaciones" : infoImpacto.descuentaSalario ? "Impacto Contable de esta Quincena" : "Estatus de Ley de la Incidencia"}
-                  </div>
+                <div className={`p-3 rounded-xl border text-[11px] ${info.descuentaSalario ? "bg-red-50 text-red-700 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                  <div className="font-bold uppercase tracking-wide text-[10px]">Impacto Contable Quincenal Real</div>
                   <div className="mt-1 font-medium">
-                    {infoImpacto.descuentaSalario 
-                      ? `Se aplicará un descuento neto quincenal real de ${formatMonto(infoImpacto.montoDescuento)}. ${infoImpacto.label}` 
-                      : `${infoImpacto.label}.`}
+                    {info.descuentaSalario 
+                      ? `Se debitará en nómina de esta quincena: ${formatMonto(info.montoDescuento)}. ${info.label}` 
+                      : info.label}
                   </div>
                 </div>
               );
             })()}
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Observación Administrativa (RRHH)</label>
-              <textarea disabled={!isEditing} value={isEditing ? formFicha.comentario : novSel.comentario} onChange={(e) => setFormFicha({ ...formFicha, comentario: e.target.value })} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200/60 rounded-xl text-xs h-20 text-slate-700 outline-none focus:bg-white focus:border-emerald-500/80 transition-all resize-none font-medium" />
+              <label className="text-[9px] font-bold text-slate-400 uppercase">Notas de Control Administrativo</label>
+              <textarea disabled={!isEditing} value={isEditing ? formFicha.comentario : novSel.comentario} onChange={(e) => setFormFicha({ ...formFicha, comentario: e.target.value })} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs h-16 outline-none focus:bg-white resize-none font-medium" />
             </div>
           </form>
         ) : (
-          <div className="text-center text-slate-400 italic py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">Seleccione un registro para desplegar el expediente.</div>
+          <div className="text-center text-slate-400 italic py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">Seleccione un registro para desplegar los detalles contables.</div>
         )}
       </div>
     </div>
