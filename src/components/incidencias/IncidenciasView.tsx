@@ -13,13 +13,50 @@ import {
   AlertTriangle,
   ClipboardList,
   User,
-  DollarSign
+  DollarSign,
+  Calendar,
+  Building2,
+  FileText,
+  CheckCircle,
+  UserCheck,
+  UserX,
+  CreditCard,
+  Receipt,
+  CalendarDays,
+  MoreHorizontal,
+  UserPlus,
+  History
 } from "lucide-react";
+
+// Mock de usuario actual (en producción vendría del auth)
+const USUARIO_ACTUAL = "ADMIN_SISTEMA";
 
 function formatMonto(val: number) {
   return "RD$ " + Number(val || 0).toLocaleString("es-DO", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+}
+
+function formatDate(dateStr: string) {
+  if (!dateStr) return "—";
+  const date = new Date(dateStr + "T00:00:00");
+  return date.toLocaleDateString("es-DO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  });
+}
+
+function formatDateTime(dateStr: string) {
+  if (!dateStr) return "—";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("es-DO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
   });
 }
 
@@ -37,6 +74,82 @@ const calcularFechaFinLaborable = (fechaInicioStr: string, diasLaborables: numbe
     }
   }
   return fecha.toISOString().split("T")[0];
+};
+
+
+
+// Función para obtener el fin de la quincena actual (fecha de inicio del CXC)
+const obtenerFinQuincenaActual = (fechaReferenciaStr: string): string => {
+  const fecha = new Date(fechaReferenciaStr + "T00:00:00");
+  const dia = fecha.getDate();
+  const mes = fecha.getMonth();
+  const anio = fecha.getFullYear();
+  
+  let fechaFin: Date;
+  
+  if (dia <= 15) {
+    // Primera quincena: termina el día 15
+    fechaFin = new Date(anio, mes, 15);
+  } else {
+    // Segunda quincena: termina el último día del mes
+    fechaFin = new Date(anio, mes + 1, 0);
+  }
+  
+  return fechaFin.toISOString().split("T")[0];
+};
+
+// Función para calcular la fecha de fin de un CXC según el número de cuotas
+const calcularFechaFinCXC = (fechaInicioStr: string, cuotas: number): string => {
+  if (!fechaInicioStr || cuotas <= 0) return fechaInicioStr;
+  
+  let fecha = new Date(fechaInicioStr + "T00:00:00");
+  let cuotasRestantes = cuotas;
+  
+  while (cuotasRestantes > 1) {
+    // Avanzar a la siguiente quincena
+    const dia = fecha.getDate();
+    const mes = fecha.getMonth();
+    const anio = fecha.getFullYear();
+    
+    if (dia === 15) {
+      // Estamos en fin de primera quincena, pasar a fin de segunda quincena del mismo mes
+      fecha = new Date(anio, mes + 1, 0);
+    } else {
+      // Estamos en fin de segunda quincena, pasar a fin de primera quincena del próximo mes
+      fecha = new Date(anio, mes + 1, 15);
+    }
+    cuotasRestantes--;
+  }
+  
+  return fecha.toISOString().split("T")[0];
+};
+
+const getIconoTipo = (tipo: string) => {
+  switch (tipo) {
+    case "Permiso": return <UserCheck className="w-3.5 h-3.5" />;
+    case "Licencias médicas": return <UserX className="w-3.5 h-3.5" />;
+    case "Maternidad": return <UserX className="w-3.5 h-3.5" />;
+    case "Cuentas por Cobrar (CXC)": return <CreditCard className="w-3.5 h-3.5" />;
+    case "Vales / Faltantes de caja": return <Receipt className="w-3.5 h-3.5" />;
+    case "Falta": return <XCircle className="w-3.5 h-3.5" />;
+    case "Tardanza": return <Clock className="w-3.5 h-3.5" />;
+    case "Vacaciones": return <CalendarDays className="w-3.5 h-3.5" />;
+    default: return <MoreHorizontal className="w-3.5 h-3.5" />;
+  }
+};
+
+const getColorTipo = (tipo: string) => {
+  switch (tipo) {
+    case "Permiso": return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "Licencias médicas": return "bg-amber-50 text-amber-700 border-amber-200";
+    case "Maternidad": return "bg-purple-50 text-purple-700 border-purple-200";
+    case "Cuentas por Cobrar (CXC)": return "bg-blue-50 text-blue-700 border-blue-200";
+    case "Vales / Faltantes de caja": return "bg-red-50 text-red-700 border-red-200";
+    case "Falta": return "bg-orange-50 text-orange-700 border-orange-200";
+    case "Tardanza": return "bg-yellow-50 text-yellow-700 border-yellow-200";
+    case "Vacaciones": return "bg-teal-50 text-teal-700 border-teal-200";
+    default: return "bg-slate-50 text-slate-700 border-slate-200";
+  }
 };
 
 export default function IncidenciasView() {
@@ -57,7 +170,7 @@ export default function IncidenciasView() {
   const [showAltaForm, setShowAltaForm] = useState(false);
 
   // --- PANEL RESIZABLE ---
-  const [panelWidth, setPanelWidth] = useState(420); 
+  const [panelWidth, setPanelWidth] = useState(480); 
   const isResizing = useRef(false);
 
   const startResizing = React.useCallback((e: React.MouseEvent) => { e.preventDefault(); isResizing.current = true; }, []);
@@ -65,12 +178,16 @@ export default function IncidenciasView() {
   const resize = React.useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
     const nextWidth = window.innerWidth - e.clientX - 32; 
-    if (nextWidth > 380 && nextWidth < 700) setPanelWidth(nextWidth);
+    if (nextWidth > 400 && nextWidth < 800) setPanelWidth(nextWidth);
   }, []);
 
   useEffect(() => {
-    window.addEventListener("mousemove", resize); window.addEventListener("mouseup", stopResizing);
-    return () => { window.removeEventListener("mousemove", resize); window.removeEventListener("mouseup", stopResizing); };
+    window.addEventListener("mousemove", resize); 
+    window.addEventListener("mouseup", stopResizing);
+    return () => { 
+      window.removeEventListener("mousemove", resize); 
+      window.removeEventListener("mouseup", stopResizing); 
+    };
   }, [resize, stopResizing]);
 
   // Captura de datos
@@ -95,10 +212,11 @@ export default function IncidenciasView() {
   const [formFicha, setFormFicha] = useState<Partial<Incidencia>>({});
   
   const novSel = useMemo(() => {
-    return incidencias.find((n) => n.id_incidencia === selectedId && n.tipo !== "Vacaciones");
+    return incidencias.find((n) => n.id_incidencia === selectedId);
   }, [incidencias, selectedId]);
 
   const empAsociado = novSel ? empleados.find(e => e.id_reloj === novSel.id_reloj) : null;
+  const empCubre = novSel?.id_reloj_cubre ? empleados.find(e => e.id_reloj === novSel.id_reloj_cubre) : null;
 
   useEffect(() => { 
     if (novSel) { 
@@ -109,25 +227,54 @@ export default function IncidenciasView() {
 
   const analizarImpactoIncidencia = (idReloj: string, tipo: Incidencia["tipo"], dias: number = 1, montoTotal: number = 0, cuotas: number = 1, tieneCobertura: boolean = false) => {
     const empleado = empleados.find(e => e.id_reloj === idReloj);
-    const sueldoBaseEmpleado = empleado ? Number(empleado.sueldo_base || empleado.sueldo) : 27489.60;
+    const sueldoBaseEmpleado = empleado ? Number(empleado.sueldo_base) : 27489.60;
     const valorDiaDinamico = sueldoBaseEmpleado / 23.83;
     const sueldoQuincenal = sueldoBaseEmpleado / 2;
 
     let montoDescuento = 0;
     let label = "";
+    let subLabel = "";
 
     switch (tipo) {
       case "Permiso":
         montoDescuento = tieneCobertura ? 0 : dias * valorDiaDinamico;
-        label = tieneCobertura ? "Turno cubierto por reemplazo." : `Deducción de ${dias} día(s).`;
+        label = tieneCobertura ? "Turno cubierto" : "Deducción por ausencia";
+        subLabel = tieneCobertura ? "Reemplazo asignado" : `${dias} día(s) sin goce de sueldo`;
         break;
       case "Vales / Faltantes de caja":
         montoDescuento = montoTotal; 
-        label = "Descuento por faltante quincenal.";
+        label = "Faltante en caja";
+        subLabel = "Descuento directo quincenal";
         break;
       case "Cuentas por Cobrar (CXC)":
         montoDescuento = cuotas > 0 ? (montoTotal / cuotas) : montoTotal;
-        label = "Amortización de préstamo.";
+        label = "Amortización de préstamo";
+        subLabel = `${cuotas} cuota(s) programada(s)`;
+        break;
+      case "Licencias médicas":
+        montoDescuento = dias * valorDiaDinamico;
+        label = "Licencia médica";
+        subLabel = `${dias} día(s) de incapacidad`;
+        break;
+      case "Maternidad":
+        montoDescuento = dias * valorDiaDinamico;
+        label = "Licencia de maternidad";
+        subLabel = `${dias} día(s) de licencia`;
+        break;
+      case "Falta":
+        montoDescuento = dias * valorDiaDinamico;
+        label = "Falta injustificada";
+        subLabel = `${dias} día(s) sin justificación`;
+        break;
+      case "Tardanza":
+        montoDescuento = montoTotal;
+        label = "Tardanza registrada";
+        subLabel = "Descuento por llegada tarde";
+        break;
+      case "Vacaciones":
+        montoDescuento = 0;
+        label = "Período vacacional";
+        subLabel = `${dias} día(s) de vacaciones`;
         break;
     }
 
@@ -136,38 +283,39 @@ export default function IncidenciasView() {
     return { 
       montoDescuento, 
       label, 
+      subLabel,
       porcentajeQuincenal,
       sueldoQuincenal,
-      sueldoBase: sueldoBaseEmpleado
+      sueldoBase: sueldoBaseEmpleado,
+      valorDia: valorDiaDinamico
     };
   };
 
+  // Métricas calculadas desde incidencias
   const metricasAdministrador = useMemo(() => {
-    let tardanzasMesMonto = 0;
-    let faltasAcumuladasDias = 0;
-    let licenciasMedicasActivas = 0;
-    let vacacionesTomadasDiasTotal = 0;
-    let descuentosAcumuladosQuincena = 0;
-
-    empleados.forEach(e => {
-      tardanzasMesMonto += e.tardanzas_quincena_actual_monto || 0;
-      faltasAcumuladasDias += e.faltas_acumuladas_cuenta || 0;
-      vacacionesTomadasDiasTotal += e.vacaciones_tomadas || 0;
-    });
+    let licenciasActivas = 0;
+    let vacacionesActivas = 0;
+    let permisosActivos = 0;
+    let descuentosAcumulados = 0;
+    let totalPrestamos = 0;
+    let totalFaltantes = 0;
 
     incidencias.forEach(n => {
-      if (n.tipo === "Vacaciones") return;
       const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias || 1, n.monto || 0, n.cuotas || 1, n.tiene_cobertura || false);
-      descuentosAcumuladosQuincena += imp.montoDescuento;
-      if (n.tipo === "Licencias médicas") licenciasMedicasActivas++;
+      descuentosAcumulados += imp.montoDescuento;
+      
+      if (n.tipo === "Licencias médicas" || n.tipo === "Maternidad") licenciasActivas++;
+      if (n.tipo === "Vacaciones") vacacionesActivas++;
+      if (n.tipo === "Permiso" && !n.tiene_cobertura) permisosActivos++;
+      if (n.tipo === "Cuentas por Cobrar (CXC)" && n.monto) totalPrestamos += n.monto;
+      if (n.tipo === "Vales / Faltantes de caja" && n.monto) totalFaltantes += n.monto;
     });
 
-    return { tardanzasMesMonto, faltasAcumuladasDias, licenciasMedicasActivas, vacacionesTomadasDiasTotal, descuentosAcumuladosQuincena };
+    return { licenciasActivas, vacacionesActivas, permisosActivos, descuentosAcumulados, totalPrestamos, totalFaltantes };
   }, [incidencias, empleados]);
 
   const filteredNovedades = useMemo(() => {
     return incidencias.filter((n) => {
-      if (n.tipo === "Vacaciones") return false;
       const emp = empleados.find(e => e.id_reloj === n.id_reloj);
       if (!emp) return false;
       return (emp.nombre.toLowerCase().includes(search.toLowerCase()) || n.id_reloj.includes(search)) && 
@@ -180,8 +328,8 @@ export default function IncidenciasView() {
     const idRelojFinal = nuevo.id_reloj || (empleados.length > 0 ? empleados[0].id_reloj : "");
     if (!idRelojFinal) return alert("❌ Error: Seleccione un colaborador válido.");
 
-    const mDias = ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
-    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
+    const mDias = ["Licencias médicas", "Maternidad", "Permiso", "Falta", "Vacaciones"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
+    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
     const mCuotas = nuevo.tipo === "Vales / Faltantes de caja" ? 1 : (parseInt(nuevo.cuotas, 10) || 1);
 
     if (["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) && mMonto <= 0) {
@@ -189,32 +337,51 @@ export default function IncidenciasView() {
       return;
     }
 
+    const ahora = new Date().toISOString();
+    let fechaInicio = nuevo.fecha_inicio;
+    let fechaFin = "";
+
+    // Para CXC: la fecha de inicio es la quincena actual
+    // y la fecha de fin se calcula según el número de cuotas
+    if (nuevo.tipo === "Cuentas por Cobrar (CXC)") {
+      // La fecha de inicio es el inicio de la quincena actual
+      fechaInicio = obtenerInicioQuincenaActual(fechaSistema);
+      // La fecha de fin se calcula desde la fecha de inicio según las cuotas
+      fechaFin = calcularFechaFinCXC(fechaInicio, mCuotas);
+    } else if (["Licencias médicas", "Maternidad", "Permiso", "Falta", "Vacaciones"].includes(nuevo.tipo)) {
+      fechaFin = calcularFechaFinLaborable(nuevo.fecha_inicio, mDias);
+    } else {
+      fechaFin = nuevo.fecha_inicio;
+    }
+
     const calculoImpacto = analizarImpactoIncidencia(idRelojFinal, nuevo.tipo, mDias, mMonto, mCuotas, nuevo.tiene_cobertura);
-    if (calculoImpacto.porcentajeQuincenal > 60) {
+    if (calculoImpacto.porcentajeQuincenal > 60 && (nuevo.tipo !== "Permiso" || !nuevo.tiene_cobertura) && nuevo.tipo !== "Vacaciones") {
       const continuar = confirm(
-        `⚠️ ADVERTENCIA DE LÍMITE:\n\nEl descuento propuesto representa el ${calculoImpacto.porcentajeQuincenal.toFixed(1)}% del salario neto quincenal.\n\nSobrepasa el límite sugerido (60%). ¿Desea proceder?`
+        `⚠️ ADVERTENCIA DE LÍMITE\n\nEl descuento propuesto representa el ${calculoImpacto.porcentajeQuincenal.toFixed(1)}% del salario neto quincenal.\n\nSobrepasa el límite sugerido (60%). ¿Desea proceder?`
       );
       if (!continuar) return;
     }
 
     const creada: Incidencia = {
-      id_incidencia: `INC-${Math.floor(100 + Math.random() * 900)}`,
-      id_reloj: idRelojFinal, 
-      tipo: nuevo.tipo, 
-      fecha_inicio: nuevo.fecha_inicio || fechaSistema,
-      fecha_fin: ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? calcularFechaFinLaborable(nuevo.fecha_inicio || fechaSistema, mDias) : (nuevo.fecha_inicio || fechaSistema),
+      id_incidencia: `INC-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      id_reloj: idRelojFinal,
+      tipo: nuevo.tipo,
+      fecha_inicio: fechaInicio,
+      fecha_fin: fechaFin || undefined,
       cantidad_dias: mDias,
       tiene_cobertura: nuevo.tipo === "Permiso" ? nuevo.tiene_cobertura : undefined,
-      id_reloj_cubre: (nuevo.tipo === "Permiso" && nuevo.tiene_cobertura) ? nuevo.id_reloj_cubre : undefined,
-      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? mMonto : undefined,
+      id_reloj_cubre: (nuevo.tipo === "Permiso" && nuevo.tiene_cobertura && nuevo.id_reloj_cubre !== "Ninguno") ? nuevo.id_reloj_cubre : undefined,
+      monto: ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(nuevo.tipo) ? mMonto : undefined,
       cuotas: mCuotas,
-      observaciones: nuevo.comentario.trim() || "Procesado sin observaciones",
-      fecha_registro: fechaSistema,
-      ya_pagada_adelantada: false
+      observaciones: nuevo.comentario.trim() || "Registro sin observaciones adicionales",
+      fecha_registro: ahora,
+      ya_pagada_adelantada: false,
+      creado_por: USUARIO_ACTUAL,
+      creado_en: ahora
     };
 
-    addIncidencia(creada); 
-    setSelectedId(creada.id_incidencia); 
+    addIncidencia(creada);
+    setSelectedId(creada.id_incidencia);
     setShowAltaForm(false);
 
     setNuevo({
@@ -232,8 +399,14 @@ export default function IncidenciasView() {
 
   const handleEjecutarModificacionFicha = () => {
     if (selectedId && incidencias) {
+      const ahora = new Date().toISOString();
       const loteActualizado = incidencias.map(n => 
-        n.id_incidencia === selectedId ? { ...n, ...formFicha } as Incidencia : n
+        n.id_incidencia === selectedId ? { 
+          ...n, 
+          ...formFicha,
+          modificado_por: USUARIO_ACTUAL,
+          modificado_en: ahora
+        } as Incidencia : n
       );
       localStorage.setItem("taniapay_local_incidencias", JSON.stringify(loteActualizado));
       window.location.reload(); 
@@ -241,395 +414,686 @@ export default function IncidenciasView() {
   };
 
   const handleEliminarConConfirmacion = (id: string) => {
-    if (!confirm("¿Eliminar registro definitivo de la quincena?")) return;
+    if (!confirm("⚠️ ¿Eliminar este registro permanentemente?\n\nEsta acción no se puede deshacer.")) return;
     eliminarIncidencia(id); 
     setSelectedId("");
   };
 
-  const cardClasses = "bg-white border border-slate-100 rounded-2xl shadow-[0_4px_20px_rgba(241,245,249,0.3)]";
+  const cardClasses = "bg-white border border-slate-100 rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.03)]";
 
   const infoPreviaAlta = useMemo(() => {
-    const mDias = ["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
-    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
+    const mDias = ["Licencias médicas", "Maternidad", "Permiso", "Falta", "Vacaciones"].includes(nuevo.tipo) ? (parseInt(nuevo.cantidad_dias, 10) || 1) : 1;
+    const mMonto = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(nuevo.tipo) ? (parseFloat(nuevo.monto) || 0) : 0;
     const mCuotas = nuevo.tipo === "Vales / Faltantes de caja" ? 1 : (parseInt(nuevo.cuotas, 10) || 1);
     return analizarImpactoIncidencia(nuevo.id_reloj, nuevo.tipo, mDias, mMonto, mCuotas, nuevo.tiene_cobertura);
   }, [nuevo, empleados]);
 
   return (
-    <div className="flex gap-2 bg-[#F8FAFC] p-4 rounded-3xl min-h-screen w-full select-none font-sans overflow-hidden text-slate-700">
+    <div className="flex gap-3 bg-gradient-to-br from-slate-50 to-slate-100/50 p-5 rounded-3xl min-h-screen w-full font-sans overflow-hidden">
       
-      {/* CUERPO CENTRAL DE LA TABLA */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0 pr-1">
-        
-        {/* CABECERA PRINCIPAL CON ACCIÓN PRIMARIA A LA DERECHA */}
-        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-          <div className="px-1 font-bold text-base text-[#2B4C5E] flex items-center gap-2">
-            <Clock className="w-5 h-5 text-emerald-600" /> Registro y Control de Incidencias Operativas
+      {/* PANEL PRINCIPAL */}
+      <div className="flex-1 flex flex-col gap-5 min-w-0">
+    
+        {/* ENCABEZADO */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Gestión de Incidencias</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Administración de permisos, licencias y ajustes de nómina</p>
           </div>
           <button 
             type="button" 
-            onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); }} 
-            className={`text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-1.5 ${showAltaForm ? "bg-rose-50 text-rose-600 border border-rose-200" : "bg-slate-700 text-white hover:bg-slate-600"}`}
+            onClick={() => { setShowAltaForm(!showAltaForm); setIsEditing(false); setSelectedId(""); }} 
+            className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 shadow-sm ${
+              showAltaForm 
+                ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100" 
+                : "bg-slate-800 text-white hover:bg-slate-900 hover:shadow-md"
+            }`}
           >
-            {showAltaForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showAltaForm ? "Cancelar" : "Crear Incidencia"}
+            {showAltaForm ? <><X className="w-4 h-4" /> Cancelar</> : <><Plus className="w-4 h-4" /> Nueva incidencia</>}
           </button>
         </div>
 
-        {/* PANEL DE MÈTRICAS ACTUALIZADO (TODAS BLANCAS CON COMUNICACIÓN DE ESTADO REAL) */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className={`${cardClasses} p-3.5 border-l-4 border-amber-500`}>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Tardanzas Mes</span>
-            <span className="text-sm font-bold font-mono text-slate-800 mt-1 block">{formatMonto(metricasAdministrador.tardanzasMesMonto)}</span>
+        {/* TARJETAS DE MÉTRICAS */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className={`${cardClasses} p-4 border-l-4 border-emerald-500`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Licencias activas</p>
+                <p className="text-2xl font-black text-slate-800 mt-1">{metricasAdministrador.licenciasActivas}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Médicas / Maternidad</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                <UserX className="w-5 h-5 text-emerald-500" />
+              </div>
+            </div>
           </div>
-          <div className={`${cardClasses} p-3.5 border-l-4 border-rose-500`}>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Faltas Acumuladas</span>
-            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.faltasAcumuladasDias} Ausencias</span>
+
+          <div className={`${cardClasses} p-4 border-l-4 border-teal-500`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vacaciones</p>
+                <p className="text-2xl font-black text-slate-800 mt-1">{metricasAdministrador.vacacionesActivas}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Colaboradores de vacaciones</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+                <CalendarDays className="w-5 h-5 text-teal-500" />
+              </div>
+            </div>
           </div>
-          <div className={`${cardClasses} p-3.5 border-l-4 border-indigo-500`}>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Licencias Activas</span>
-            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.licenciasMedicasActivas} Médicas</span>
+
+          <div className={`${cardClasses} p-4 border-l-4 border-amber-500`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Permisos activos</p>
+                <p className="text-2xl font-black text-slate-800 mt-1">{metricasAdministrador.permisosActivos}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Sin cobertura de turno</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <UserCheck className="w-5 h-5 text-amber-500" />
+              </div>
+            </div>
           </div>
-          <div className={`${cardClasses} p-3.5 border-l-4 border-emerald-500`}>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Vacaciones Tomadas</span>
-            <span className="text-sm font-extrabold text-slate-800 mt-1 block">{metricasAdministrador.vacacionesTomadasDiasTotal} Días</span>
-          </div>
-          <div className={`${cardClasses} p-3.5 border-l-4 ${metricasAdministrador.descuentosAcumuladosQuincena > 0 ? "border-rose-500" : "border-emerald-500"}`}>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Descuentos Aplicados</span>
-            <span className={`text-sm font-bold font-mono mt-1 block ${metricasAdministrador.descuentosAcumuladosQuincena > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-              {formatMonto(metricasAdministrador.descuentosAcumuladosQuincena)}
-            </span>
+
+          <div className={`${cardClasses} p-4 border-l-4 ${metricasAdministrador.descuentosAcumulados > 0 ? 'border-red-500' : 'border-slate-300'}`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descuentos aplicados</p>
+                <p className={`text-xl font-black font-mono mt-1 ${metricasAdministrador.descuentosAcumulados > 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                  {formatMonto(metricasAdministrador.descuentosAcumulados)}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Total quincena actual</p>
+              </div>
+              <div className={`w-10 h-10 rounded-xl ${metricasAdministrador.descuentosAcumulados > 0 ? 'bg-red-50' : 'bg-slate-50'} flex items-center justify-center`}>
+                <DollarSign className={`w-5 h-5 ${metricasAdministrador.descuentosAcumulados > 0 ? 'text-red-500' : 'text-slate-400'}`} />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* BARRA SECUNDARIA EXCLUSIVA PARA FILTROS */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-2.5 flex items-center gap-2 shadow-sm">
-          <div className="relative w-60">
-            <span className="absolute left-2.5 top-2.5 text-slate-400"><Search className="w-3.5 h-3.5" /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar colaborador..." className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:bg-white text-slate-700" />
+        {/* FILTROS */}
+        <div className={`${cardClasses} p-3 flex items-center gap-3 flex-wrap shadow-sm`}>
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nombre o ID..." className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:bg-white focus:border-slate-300 transition-all text-slate-700" />
           </div>
-          <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)} className="pl-2 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none cursor-pointer">
-            <option value="Todos">Todos los Conceptos</option>
-            <option value="Permiso">Permisos</option>
-            <option value="Licencias médicas">Licencias médicas</option>
-            <option value="Maternidad">Maternidad</option>
-            <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-            <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-          </select>
-          <select value={filterSucursal} onChange={e => setFilterSucursal(e.target.value)} className="pl-2 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 outline-none cursor-pointer">
-            <option value="Todos">Todas las Sucursales</option>
-            {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          
+          <div className="relative">
+            <FileText className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)} className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 outline-none cursor-pointer hover:bg-white transition-all appearance-none">
+              <option value="Todos">Todos los conceptos</option>
+              <option value="Permiso">Permisos</option>
+              <option value="Licencias médicas">Licencias médicas</option>
+              <option value="Maternidad">Maternidad</option>
+              <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar</option>
+              <option value="Vales / Faltantes de caja">Vales / Faltantes</option>
+              <option value="Falta">Faltas</option>
+              <option value="Tardanza">Tardanzas</option>
+              <option value="Vacaciones">Vacaciones</option>
+            </select>
+          </div>
+
+          <div className="relative">
+            <Building2 className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <select value={filterSucursal} onChange={e => setFilterSucursal(e.target.value)} className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 outline-none cursor-pointer hover:bg-white transition-all appearance-none">
+              <option value="Todos">Todas las sucursales</option>
+              {SUCURSALES_DISPONIBLES?.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
 
-        {/* TABLA MAESTRA DE 5 COLUMNAS OPTIMIZADA */}
-        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm flex-1">
-          <div className="overflow-x-auto h-full">
-            <table className="w-full text-left text-xs table-fixed min-w-[900px]">
+        {/* TABLA DE INCIDENCIAS */}
+        <div className={`${cardClasses} overflow-hidden shadow-sm`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
               <thead>
-                <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100 h-10 sticky top-0 z-10">
-                  <th className="p-2.5 pl-5 w-64">Colaborador / Reloj ID</th>
-                  <th className="p-2.5 w-48">Sucursal</th>
-                  <th className="p-2.5 w-40">Concepto</th>
-                  <th className="p-2.5 w-28 text-center">Plazo / Días</th>
-                  <th className="p-2.5 w-60">Impacto Financiero Aplicado</th>
+                <tr className="bg-slate-50/80 border-b border-slate-100">
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-64">Colaborador</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-40">Sucursal</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-44">Concepto</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-24 text-center">Plazo</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase tracking-wider w-56">Impacto económico</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600">
-                {filteredNovedades.map((n) => {
-                  const isSelected = !showAltaForm && selectedId === n.id_incidencia;
-                  const emp = empleados.find(e => e.id_reloj === n.id_reloj);
-                  const empCubre = n.id_reloj_cubre ? empleados.find(e => e.id_reloj === n.id_reloj_cubre) : null;
-                  const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias || 1, n.monto || 0, n.cuotas || 1, n.tiene_cobertura || false);
+              <tbody className="divide-y divide-slate-50">
+                {filteredNovedades.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <ClipboardList className="w-12 h-12 text-slate-300" />
+                        <p className="text-slate-400 font-medium">No hay incidencias registradas</p>
+                        <p className="text-xs text-slate-300">Ajusta los filtros o crea una nueva incidencia</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredNovedades.map((n) => {
+                    const isSelected = !showAltaForm && selectedId === n.id_incidencia;
+                    const emp = empleados.find(e => e.id_reloj === n.id_reloj);
+                    const imp = analizarImpactoIncidencia(n.id_reloj, n.tipo, n.cantidad_dias || 1, n.monto || 0, n.cuotas || 1, n.tiene_cobertura || false);
+                    const colorTipo = getColorTipo(n.tipo);
+                    const iconoTipo = getIconoTipo(n.tipo);
+                    const empCubreLocal = n.id_reloj_cubre ? empleados.find(e => e.id_reloj === n.id_reloj_cubre) : null;
 
-                  return (
-                    <tr 
-                      key={n.id_incidencia} 
-                      onClick={() => { setSelectedId(n.id_incidencia); setShowAltaForm(false); }} 
-                      className={`h-12 cursor-pointer transition-all ${isSelected ? "bg-emerald-50/30 text-slate-900 border-l-4 border-emerald-500 font-bold" : "hover:bg-slate-50/30"}`}
-                    >
-                      <td className="p-2.5 pl-5">
-                        <div className="font-bold text-slate-700 uppercase truncate">{emp?.nombre || "No Indexado"}</div>
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">ID: {n.id_reloj}</div>
-                      </td>
-                      <td className="p-2.5 uppercase font-medium text-slate-500 truncate">{emp?.sucursal_principal}</td>
-                      <td className="p-2.5 font-bold text-slate-700">{n.tipo}</td>
-                      <td className="p-2.5 text-center font-mono font-bold text-slate-800">
-                        {n.tipo === "Cuentas por Cobrar (CXC)" ? `${n.cuotas || 1} Qs` : `${n.cantidad_dias || 1} d`}
-                      </td>
-                      <td className="p-2.5 text-xs truncate">
-                        {n.tipo === "Permiso" && n.tiene_cobertura ? (
-                          <span className="text-emerald-700 font-medium bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg text-[10px]">Cubierto por: <strong className="uppercase">{empCubre?.nombre || n.id_reloj_cubre}</strong></span>
-                        ) : imp.montoDescuento > 0 ? (
-                          <span className="text-rose-600 font-mono font-bold">Deducción: -{formatMonto(imp.montoDescuento)}</span>
-                        ) : (
-                          <span className="text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-lg text-[10px]">{imp.label}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr 
+                        key={n.id_incidencia} 
+                        onClick={() => { setSelectedId(n.id_incidencia); setShowAltaForm(false); }} 
+                        className={`cursor-pointer transition-all duration-150 hover:bg-slate-50/50 ${isSelected ? "bg-emerald-50/40 border-l-4 border-emerald-500" : ""}`}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="font-bold text-slate-800 uppercase">{emp?.nombre || "No asignado"}</div>
+                          <div className="text-[11px] font-mono text-slate-400 mt-0.5">ID: {n.id_reloj}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-slate-600 font-medium">{emp?.sucursal_principal || "—"}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold ${colorTipo}`}>
+                            {iconoTipo}
+                            {n.tipo}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="font-mono font-bold text-slate-700">
+                            {n.tipo === "Cuentas por Cobrar (CXC)" ? `${n.cuotas || 1} cuota(s)` : `${n.cantidad_dias || 1} día(s)`}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {n.tipo === "Permiso" && n.tiene_cobertura ? (
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-emerald-500" />
+                              <span className="text-emerald-700 font-medium text-xs">Cubierto por {empCubreLocal?.nombre?.split(' ')[0] || n.id_reloj_cubre}</span>
+                            </div>
+                          ) : imp.montoDescuento > 0 ? (
+                            <div>
+                              <span className="text-red-600 font-mono font-bold">-{formatMonto(imp.montoDescuento)}</span>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{imp.subLabel}</p>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-emerald-600 font-medium text-xs">{imp.label}</span>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{imp.subLabel}</p>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* DRAG GRIP CON VISIBILIDAD EN HOVER MEJORADA */}
-      <div onMouseDown={startResizing} className="w-1.5 hover:bg-slate-300 transition-colors cursor-col-resize self-stretch shrink-0 mx-0.5 rounded-full" />
+      {/* RESIZE HANDLE */}
+      <div onMouseDown={startResizing} className="w-1.5 bg-slate-200/50 hover:bg-slate-300 transition-all cursor-col-resize self-stretch shrink-0 mx-0.5 rounded-full" />
 
-      {/* PANEL EXPEDIENTE LATERAL */}
-      <div style={{ width: `${panelWidth}px` }} className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-md sticky top-4 max-h-[92vh] overflow-y-auto shrink-0 flex flex-col gap-5">
-        
-        {/* CABECERA FIJA CON CONTEXTO ID */}
-        <div className="border-b pb-2.5 border-slate-100 flex justify-between items-center shrink-0">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Detalle del registro</span>
-          {!showAltaForm && selectedId && (
-            <span className="font-mono bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-lg text-[11px] border">
-              {selectedId}
-            </span>
-          )}
-        </div>
-
+      {/* PANEL LATERAL - EXPEDIENTE DETALLADO */}
+      <div style={{ width: `${panelWidth}px` }} className="bg-white rounded-2xl shadow-xl sticky top-5 max-h-[calc(100vh-2rem)] overflow-y-auto shrink-0 flex flex-col border border-slate-100">
         {showAltaForm ? (
           /* FORMULARIO DE ALTA */
-          <div className="flex flex-col gap-4 text-xs">
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Colaborador</label>
-              <select value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer">
-                {empleados.map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre.toUpperCase()} (ID: {emp.id_reloj})</option>)}
-              </select>
+          <div className="p-6">
+            <div className="flex items-center gap-3 pb-5 mb-2 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                <Plus className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-lg">Nueva incidencia</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Registrar evento en la nómina</p>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Concepto</label>
-              <select value={nuevo.tipo} onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1", tiene_cobertura: false, id_reloj_cubre: "Ninguno"})} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 cursor-pointer">
-                <option value="Permiso">Permiso</option>
-                <option value="Licencias médicas">Licencia Médica</option>
-                <option value="Maternidad">Maternidad</option>
-                <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Fecha Inicial</label>
-              <input type="date" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs focus:bg-white" value={nuevo.fecha_inicio} onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} />
-            </div>
-
-            {nuevo.tipo === "Permiso" && (
-              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl flex flex-col gap-2">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-700 font-bold select-none">
-                  <input type="checkbox" className="w-4 h-4 rounded border-slate-300 accent-emerald-500" checked={nuevo.tiene_cobertura} onChange={e => setNuevo({...nuevo, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} />
-                  <span>¿Turno cubierto?</span>
-                </label>
-                {nuevo.tiene_cobertura && (
-                  <select value={nuevo.id_reloj_cubre} onChange={e => setNuevo({...nuevo, id_reloj_cubre: e.target.value})} className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none cursor-pointer">
-                    <option value="Ninguno">-- Seleccionar Reemplazo --</option>
-                    {empleados.filter(em => em.id_reloj !== nuevo.id_reloj).map(emp => <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre}</option>)}
-                  </select>
-                )}
-              </div>
-            )}
-
-            {(["Licencias médicas", "Maternidad", "Permiso"].includes(nuevo.tipo)) ? (
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase">Días</label>
-                <input type="number" min="1" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs" value={nuevo.cantidad_dias} onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">Monto Total (RD$)</label>
-                  <input type="number" min="0" step="0.01" className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-mono text-xs" value={nuevo.monto} onChange={e => setNuevo({...nuevo, monto: e.target.value})} />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase">Cuotas</label>
-                  <input type="number" min="1" disabled={nuevo.tipo === "Vales / Faltantes de caja"} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono disabled:opacity-50" value={nuevo.tipo === "Vales / Faltantes de caja" ? "1" : nuevo.cuotas} onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} />
-                </div>
-              </div>
-            )}
-
-            {infoPreviaAlta.montoDescuento > 0 && (
-              <div className={`p-3 rounded-xl border text-[11px] flex flex-col gap-1.5 ${infoPreviaAlta.porcentajeQuincenal > 60 ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-slate-50 border-slate-200"}`}>
-                <div className="flex justify-between font-mono">
-                  <span>Deducción Estimada:</span>
-                  <span className="font-bold text-slate-800">-{formatMonto(infoPreviaAlta.montoDescuento)}</span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase">Comentario</label>
-              <textarea placeholder="Notas administrativas obligatorias..." className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs h-14 outline-none focus:bg-white resize-none text-slate-700" value={nuevo.comentario} onChange={e => setNuevo({...nuevo, comentario: e.target.value})} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t">
-              <button type="button" onClick={() => setShowAltaForm(false)} className="border border-slate-200 text-slate-500 font-semibold py-1.5 rounded-xl">Cancelar</button>
-              <button type="button" onClick={handleGuardarNuevaIncidencia} className="bg-[#2B4C5E] text-white font-bold py-1.5 rounded-xl transition-all hover:bg-[#1E3542]">Guardar Registro</button>
-            </div>
-          </div>
-        ) : novSel ? (
-          /* AUDITORÍA CONTABLE VISTA DETALLE */
-          <div className="flex flex-col gap-5 text-xs h-full justify-between animate-fadeIn">
-            <div className="flex flex-col gap-4">
-              
-              {/* FILA DE COLABORADOR E INCLUSIÓN EXPLÍCITA DE SUELDO BASE */}
-              <div className="flex flex-col">
-                <span className="text-slate-800 font-black text-xs tracking-wider uppercase font-sans">
-                  {novSel.tipo === "Cuentas por Cobrar (CXC)" ? "CUENTAS POR COBRAR" : novSel.tipo.toUpperCase()}
-                </span>
-                <span className="text-slate-700 font-bold uppercase mt-2 text-[13px] tracking-normal">
-                  {empAsociado ? empAsociado.nombre : "No Indexado"}
-                </span>
-                <div className="text-[10px] text-slate-400 uppercase font-medium mt-0.5 flex flex-col gap-0.5">
-                  <span>Sucursal: {empAsociado?.sucursal_principal || "No Asignada"}</span>
-                  <span className="text-slate-500 font-semibold font-mono mt-0.5 bg-slate-50 px-2 py-1 border border-slate-100 rounded-lg self-start flex items-center gap-1">
-                    <User className="w-3 h-3 text-slate-400" /> Sueldo Base: {formatMonto(empAsociado?.sueldo_base || 0)}
-                  </span>
-                </div>
+            <div className="space-y-5">
+              {/* Selección de colaborador */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Colaborador</label>
+                <select 
+                  value={nuevo.id_reloj} 
+                  onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} 
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all"
+                >
+                  {empleados.map(emp => (
+                    <option key={emp.id_reloj} value={emp.id_reloj}>
+                      {emp.nombre.toUpperCase()} — {emp.cargo} (ID: {emp.id_reloj})
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {!isEditing ? (
-                (() => {
-                  const esAjusteFinanciero = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja"].includes(novSel.tipo);
-                  const d = novSel.cantidad_dias || 1;
-                  const m = novSel.monto || 0;
-                  const c = novSel.cuotas || 1;
-                  const imp = analizarImpactoIncidencia(novSel.id_reloj, novSel.tipo, d, m, c, novSel.tiene_cobertura || false);
+              {/* Tipo de incidencia */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tipo de incidencia</label>
+                <select 
+                  value={nuevo.tipo} 
+                  onChange={e => setNuevo({...nuevo, tipo: e.target.value as any, monto: "0", cuotas: "1", cantidad_dias: "1", tiene_cobertura: false, id_reloj_cubre: "Ninguno"})} 
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all"
+                >
+                  <option value="Permiso">📋 Permiso</option>
+                  <option value="Licencias médicas">🏥 Licencia médica</option>
+                  <option value="Maternidad">👶 Maternidad</option>
+                  <option value="Cuentas por Cobrar (CXC)">💰 Cuentas por Cobrar (CXC)</option>
+                  <option value="Vales / Faltantes de caja">💸 Vales / Faltantes de caja</option>
+                  <option value="Falta">❌ Falta</option>
+                  <option value="Tardanza">⏰ Tardanza</option>
+                  <option value="Vacaciones">🏖️ Vacaciones</option>
+                </select>
+              </div>
 
-                  const totalDeuda = esAjusteFinanciero ? m : imp.montoDescuento;
-                  const descuentoAhora = imp.montoDescuento;
-                  const restante = Math.max(0, totalDeuda - descuentoAhora);
-                  const cuotasFaltantes = novSel.tipo === "Cuentas por Cobrar (CXC)" ? Math.max(0, c - 1) : 0;
-
-                  return (
-                    <div className="flex flex-col gap-4">
-                      
-                      {esAjusteFinanciero ? (
-                        /* 📊 ESQUEMA CONTABLE DE 3 DATOS PRINCIPALES */
-                        <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-4 flex flex-col gap-3.5 font-sans relative">
-                          {imp.porcentajeQuincenal > 60 && (
-                            <div className="absolute top-3 right-3 text-rose-500" title="Excede el 60% legal">
-                              <AlertTriangle className="w-4 h-4" />
-                            </div>
-                          )}
-                          
-                          <div>
-                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total de la deuda:</span>
-                            <span className="text-slate-800 font-bold text-base font-mono block mt-0.5">
-                              {formatMonto(totalDeuda)}
-                            </span>
-                          </div>
-
-                          <div className="border-t border-slate-200/60 pt-3">
-                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuánto se descuenta ahora:</span>
-                            <span className="text-rose-600 font-extrabold text-base font-mono block mt-0.5">
-                              -{formatMonto(descuentoAhora)}
-                            </span>
-                          </div>
-
-                          <div className="border-t border-slate-200/60 pt-3 grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuánto queda (Restante):</span>
-                              <span className="text-slate-700 font-bold text-[13px] font-mono block mt-0.5">
-                                {formatMonto(restante)}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Cuántas cuotas faltan:</span>
-                              <span className="text-slate-700 font-bold text-[13px] block mt-0.5">
-                                {novSel.tipo === "Vales / Faltantes de caja" ? "0 cuotas" : `${cuotasFaltantes} cuota${cuotasFaltantes !== 1 ? "s" : ""}`}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        /* CONTROL PARA AUSENCIAS O LICENCIAS */
-                        <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 text-center">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Monto de Deducción</span>
-                          <span className="text-xl font-black font-mono text-rose-600 block mt-1">
-                            {imp.montoDescuento > 0 ? `-${formatMonto(imp.montoDescuento)}` : "RD$ 0.00"}
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-medium block mt-1.5 font-sans bg-white border py-1 px-2 rounded-lg inline-block">{imp.label}</span>
-                        </div>
-                      )}
-
-                      {/* DATOS DE COBERTURA Y VIGENCIA RETRAÍDOS DE LA TABLA */}
-                      <div className="flex flex-col gap-2 border-t pt-3 border-slate-100 font-sans text-[11px] text-slate-400">
-                        <div className="flex justify-between"><span>Vigencia/Rango:</span><span className="font-mono text-slate-600 font-semibold">{novSel.fecha_inicio} {novSel.fecha_fin && `al ${novSel.fecha_fin}`}</span></div>
-                        <div className="flex justify-between"><span>Registrado el:</span><span className="font-mono text-slate-600">{novSel.fecha_registro}</span></div>
-                        {novSel.observaciones && <div className="text-[10px] text-slate-500 italic mt-2 bg-slate-50 p-2.5 border border-slate-100 rounded-xl">Nota: "{novSel.observaciones}"</div>}
-                      </div>
-
-                    </div>
-                  );
-                })()
-              ) : (
-                /* FORMULARIO LATERAL INTERNO DE EDICIÓN */
-                <div className="flex flex-col gap-3 animate-fadeIn">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-slate-400 font-bold uppercase">Concepto</label>
-                    <select value={formFicha.tipo} onChange={(e) => setFormFicha({ ...formFicha, tipo: e.target.value as any, monto: 0, cuotas: 1, cantidad_dias: 1 })} className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs">
-                      <option value="Permiso">Permiso</option>
-                      <option value="Licencias médicas">Licencia Médica</option>
-                      <option value="Maternidad">Maternidad</option>
-                      <option value="Cuentas por Cobrar (CXC)">Cuentas por Cobrar (CXC)</option>
-                      <option value="Vales / Faltantes de caja">Vales / Faltantes de caja</option>
-                    </select>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-slate-400 font-bold uppercase">Fecha de Inicio</label>
-                    <input type="date" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.fecha_inicio || ""} onChange={e => setFormFicha({...formFicha, fecha_inicio: e.target.value})} />
-                  </div>
-
-                  {(["Licencias médicas", "Maternidad", "Permiso"].includes(formFicha.tipo || "")) ? (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] text-slate-400 font-bold uppercase">Días</label>
-                      <input type="number" min="1" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.cantidad_dias ?? 1} onChange={e => setFormFicha({...formFicha, cantidad_dias: parseInt(e.target.value, 10) || 1})} />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-slate-400 font-bold uppercase">Monto</label>
-                        <input type="number" step="0.01" className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono" value={formFicha.monto ?? 0} onChange={e => setFormFicha({...formFicha, monto: parseFloat(e.target.value) || 0})} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] text-slate-400 font-bold uppercase">Cuotas</label>
-                        <input type="number" min="1" disabled={formFicha.tipo === "Vales / Faltantes de caja"} className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs font-mono disabled:opacity-40" value={formFicha.tipo === "Vales / Faltantes de caja" ? 1 : (formFicha.cuotas ?? 1)} onChange={e => setFormFicha({...formFicha, cuotas: parseInt(e.target.value, 10) || 1})} />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[9px] text-slate-400 font-bold uppercase">Observaciones</label>
-                    <textarea className="w-full px-2.5 py-1.5 bg-slate-50 border rounded-lg text-xs h-14 resize-none" value={formFicha.observaciones || ""} onChange={e => setFormFicha({...formFicha, observaciones: e.target.value})} />
+              {/* Fecha de inicio - Solo visible para tipos que no son CXC */}
+              {nuevo.tipo !== "Cuentas por Cobrar (CXC)" && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Fecha de inicio
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="date" 
+                      className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all text-slate-700" 
+                      value={nuevo.fecha_inicio} 
+                      onChange={e => setNuevo({...nuevo, fecha_inicio: e.target.value})} 
+                    />
                   </div>
                 </div>
               )}
+          
+              {/* Para CXC, mostrar información de la quincena calculada */}
+              {nuevo.tipo === "Cuentas por Cobrar (CXC)" && (
+                <div className="bg-blue-50/30 rounded-xl p-4 border border-blue-100">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Programación automática</span>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      <span className="text-slate-600">Fecha de primera cuota:</span>{' '}
+                      <span className="font-bold text-slate-800">{formatDate(obtenerFinQuincenaActual(fechaSistema))}</span>
+                    </p>
+                    {parseInt(nuevo.cuotas) > 1 && (
+                      <p>
+                        <span className="text-slate-600">Fecha de última cuota:</span>{' '}
+                        <span className="font-bold text-slate-800">
+                          {formatDate(calcularFechaFinCXC(obtenerFinQuincenaActual(fechaSistema), parseInt(nuevo.cuotas)))}
+                        </span>
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-blue-100">
+                      El sistema calculará automáticamente las fechas según el número de cuotas seleccionado.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Configuración por tipo */}
+              {nuevo.tipo === "Permiso" && (
+                <div className="bg-indigo-50/30 rounded-xl p-4 space-y-3 border border-indigo-100">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-indigo-300 accent-indigo-600" 
+                      checked={nuevo.tiene_cobertura} 
+                      onChange={e => setNuevo({...nuevo, tiene_cobertura: e.target.checked, id_reloj_cubre: "Ninguno"})} 
+                    />
+                    <span className="text-sm font-medium text-indigo-900">Turno será cubierto por otro colaborador</span>
+                  </label>
+                  {nuevo.tiene_cobertura && (
+                    <select 
+                      value={nuevo.id_reloj_cubre} 
+                      onChange={e => setNuevo({...nuevo, id_reloj_cubre: e.target.value})} 
+                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm outline-none cursor-pointer"
+                    >
+                      <option value="Ninguno">— Seleccionar reemplazo —</option>
+                      {empleados.filter(em => em.id_reloj !== nuevo.id_reloj).map(emp => (
+                        <option key={emp.id_reloj} value={emp.id_reloj}>{emp.nombre}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Días o montos según tipo */}
+              {["Licencias médicas", "Maternidad", "Permiso", "Falta", "Vacaciones"].includes(nuevo.tipo) ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cantidad de días</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all" 
+                    value={nuevo.cantidad_dias} 
+                    onChange={e => setNuevo({...nuevo, cantidad_dias: e.target.value})} 
+                  />
+                </div>
+              ) : nuevo.tipo === "Cuentas por Cobrar (CXC)" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto total (RD$)</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all" 
+                      value={nuevo.monto} 
+                      onChange={e => setNuevo({...nuevo, monto: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Número de cuotas</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="24"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all" 
+                      value={nuevo.cuotas} 
+                      onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} 
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto (RD$)</label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      step="0.01" 
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all" 
+                      value={nuevo.monto} 
+                      onChange={e => setNuevo({...nuevo, monto: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cuotas</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      disabled={nuevo.tipo === "Vales / Faltantes de caja" || nuevo.tipo === "Tardanza"} 
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all" 
+                      value={nuevo.tipo === "Vales / Faltantes de caja" || nuevo.tipo === "Tardanza" ? "1" : nuevo.cuotas} 
+                      onChange={e => setNuevo({...nuevo, cuotas: e.target.value})} 
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Vista previa del impacto */}
+              {infoPreviaAlta.montoDescuento > 0 && (
+                <div className={`p-4 rounded-xl ${infoPreviaAlta.porcentajeQuincenal > 60 ? 'bg-red-50 border border-red-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Impacto estimado</span>
+                    {infoPreviaAlta.porcentajeQuincenal > 60 && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-red-600">
+                        <AlertTriangle className="w-3 h-3" /> Excede límite 60%
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-sm text-slate-600">Deducción por cuota:</span>
+                    <span className="text-xl font-black font-mono text-red-600">-{formatMonto(infoPreviaAlta.montoDescuento)}</span>
+                  </div>
+                  {nuevo.tipo === "Cuentas por Cobrar (CXC)" && (
+                    <>
+                      <div className="flex justify-between items-baseline mt-1">
+                        <span className="text-xs text-slate-500">Monto total:</span>
+                        <span className="text-sm font-bold text-slate-700">{formatMonto(parseFloat(nuevo.monto) || 0)}</span>
+                      </div>
+                      <div className="flex justify-between items-baseline mt-1">
+                        <span className="text-xs text-slate-500">Número de cuotas:</span>
+                        <span className="text-sm font-bold text-slate-700">{parseInt(nuevo.cuotas) || 1}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100">
+                        📅 El sistema calculará automáticamente las fechas de cada cuota quincenal
+                      </p>
+                    </>
+                  )}
+                  <div className="flex justify-between items-baseline mt-1">
+                    <span className="text-xs text-slate-500">Porcentaje del salario:</span>
+                    <span className="text-sm font-bold text-slate-700">{infoPreviaAlta.porcentajeQuincenal.toFixed(1)}%</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Comentarios */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Comentarios / notas</label>
+                <textarea 
+                  rows={3} 
+                  placeholder="Detalles administrativos, justificaciones, etc." 
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-100 focus:border-emerald-300 transition-all resize-none" 
+                  value={nuevo.comentario} 
+                  onChange={e => setNuevo({...nuevo, comentario: e.target.value})} 
+                />
+              </div>
+
+              {/* Botones de acción */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowAltaForm(false)} 
+                  className="border border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl text-sm hover:bg-slate-50 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleGuardarNuevaIncidencia} 
+                  className="bg-slate-800 text-white font-bold py-2.5 rounded-xl text-sm hover:bg-slate-900 transition-all shadow-sm flex items-center justify-center gap-2"
+                >
+                  <Save className="w-4 h-4" /> Registrar
+                </button>
+              </div>
+            </div>
+          </div>
+
+        ) : novSel ? (
+          /* PANEL DE DETALLE */
+          <div className="p-6">
+            {/* Encabezado */}
+            <div className="flex items-start justify-between pb-5 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${getColorTipo(novSel.tipo)}`}>
+                  {getIconoTipo(novSel.tipo)}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${getColorTipo(novSel.tipo)}`}>
+                      {novSel.tipo}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">ID: {novSel.id_incidencia}</span>
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-lg mt-1">{empAsociado?.nombre || "Colaborador no encontrado"}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{empAsociado?.cargo || "Sin cargo"} • {empAsociado?.sucursal_principal || "Sin sucursal"}</p>
+                </div>
+              </div>
             </div>
 
-            {/* BOTÓN DISPARADOR DE EDICIÓN DE FICHA LOCAL */}
-            <div className="pt-3 border-t border-slate-100">
+            {/* Información general */}
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50/50 rounded-xl">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fecha de inicio</p>
+                  <p className="text-sm font-mono font-semibold text-slate-700">{formatDate(novSel.fecha_inicio)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fecha de fin</p>
+                  <p className="text-sm font-mono font-semibold text-slate-700">{novSel.fecha_fin ? formatDate(novSel.fecha_fin) : "Indefinido"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fecha de registro</p>
+                  <p className="text-sm font-mono text-slate-600">{formatDateTime(novSel.fecha_registro)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado</p>
+                  <p className="text-sm font-semibold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> Activo
+                  </p>
+                </div>
+              </div>
+
+              {/* Auditoría - Quién creó/modificó */}
+              <div className="p-4 bg-slate-50/30 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <History className="w-4 h-4 text-slate-400" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Auditoría del registro</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-slate-400">Creado por</p>
+                    <p className="font-semibold text-slate-700 flex items-center gap-1">
+                      <UserPlus className="w-3 h-3" /> {novSel.creado_por || USUARIO_ACTUAL}
+                    </p>
+                    <p className="text-[10px] text-slate-400">{novSel.creado_en ? formatDateTime(novSel.creado_en) : formatDateTime(novSel.fecha_registro)}</p>
+                  </div>
+                  {novSel.modificado_por && (
+                    <div>
+                      <p className="text-slate-400">Modificado por</p>
+                      <p className="font-semibold text-slate-700 flex items-center gap-1">
+                        <Pencil className="w-3 h-3" /> {novSel.modificado_por}
+                      </p>
+                      <p className="text-[10px] text-slate-400">{formatDateTime(novSel.modificado_en || "")}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Detalle específico según tipo */}
+              {(() => {
+                const imp = analizarImpactoIncidencia(
+                  novSel.id_reloj, 
+                  novSel.tipo, 
+                  novSel.cantidad_dias || 1, 
+                  novSel.monto || 0, 
+                  novSel.cuotas || 1, 
+                  novSel.tiene_cobertura || false
+                );
+                const esFinanciero = ["Cuentas por Cobrar (CXC)", "Vales / Faltantes de caja", "Tardanza"].includes(novSel.tipo);
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Impacto económico */}
+                    <div className={`p-5 rounded-xl border-2 ${imp.montoDescuento > 0 ? 'border-red-100 bg-gradient-to-br from-red-50/30 to-white' : 'border-emerald-100 bg-gradient-to-br from-emerald-50/30 to-white'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Impacto económico</span>
+                        {imp.porcentajeQuincenal > 60 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                            <AlertTriangle className="w-3 h-3" /> Límite excedido
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex justify-between items-baseline mb-2">
+                        <span className="text-sm text-slate-600">{imp.label}:</span>
+                        {imp.montoDescuento > 0 ? (
+                          <span className="text-2xl font-black font-mono text-red-600">-{formatMonto(imp.montoDescuento)}</span>
+                        ) : (
+                          <span className="text-lg font-semibold text-emerald-600">Sin deducción</span>
+                        )}
+                      </div>
+                      
+                      {imp.subLabel && (
+                        <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-100">{imp.subLabel}</p>
+                      )}
+                      
+                      {esFinanciero && novSel.monto && novSel.monto > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span className="text-slate-400 block">Monto total</span>
+                            <span className="font-bold text-slate-700">{formatMonto(novSel.monto)}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block">Cuotas</span>
+                            <span className="font-bold text-slate-700">{novSel.cuotas || 1}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Mostrar información de quincena para CXC */}
+                      {novSel.tipo === "Cuentas por Cobrar (CXC)" && novSel.fecha_inicio && novSel.fecha_fin && (
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <div className="flex items-center gap-2 text-xs">
+                            <Calendar className="w-4 h-4 text-blue-500" />
+                            <span className="text-slate-600">Período de aplicación:</span>
+                            <span className="font-bold text-slate-800">
+                              {formatDate(novSel.fecha_inicio)} al {formatDate(novSel.fecha_fin)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {novSel.tipo === "Permiso" && novSel.tiene_cobertura && (
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                          <div className="flex items-center gap-2 text-xs">
+                            <UserCheck className="w-4 h-4 text-emerald-500" />
+                            <span className="text-slate-600">Cubierto por:</span>
+                            <span className="font-bold text-slate-800">{empCubre?.nombre || novSel.id_reloj_cubre}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Observaciones */}
+                    {novSel.observaciones && novSel.observaciones !== "Registro sin observaciones adicionales" && (
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-4 h-4 text-slate-400" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Notas administrativas</span>
+                        </div>
+                        <p className="text-sm text-slate-600 italic leading-relaxed">"{novSel.observaciones}"</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Botones de acción */}
+            <div className="pt-6 mt-4 border-t border-slate-100">
               {!isEditing ? (
-                <button type="button" onClick={() => setIsEditing(true)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all">
-                  <Pencil className="w-3.5 h-3.5" /> Editar Registro
-                </button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsEditing(true)} 
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-200 text-slate-600 font-semibold rounded-xl text-sm hover:bg-slate-50 transition-all"
+                  >
+                    <Pencil className="w-4 h-4" /> Editar
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleEliminarConConfirmacion(novSel.id_incidencia)} 
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 font-semibold rounded-xl text-sm hover:bg-red-100 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" /> Eliminar
+                  </button>
+                </div>
               ) : (
-                <div className="flex gap-2 w-full">
-                  <button type="button" onClick={() => setIsEditing(false)} className="border border-slate-200 text-slate-400 py-1.5 rounded-xl flex-1 text-center font-semibold">Cancelar</button>
-                  <button type="button" onClick={handleEjecutarModificacionFicha} className="bg-[#2B4C5E] text-white py-1.5 rounded-xl flex-1 flex items-center justify-center gap-1.5 font-bold"><Save className="w-3.5 h-3.5" /> Guardar</button>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsEditing(false)} 
+                    className="px-4 py-2.5 border border-slate-200 text-slate-600 font-semibold rounded-xl text-sm hover:bg-slate-50 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={handleEjecutarModificacionFicha} 
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 text-white font-bold rounded-xl text-sm hover:bg-slate-900 transition-all"
+                  >
+                    <Save className="w-4 h-4" /> Guardar cambios
+                  </button>
                 </div>
               )}
             </div>
           </div>
         ) : (
-          /* ESTADO VACÍO REGULADO CON ICONO E INSTRUCCIÓN EXACTA */
-          <div className="text-center text-slate-400 h-full flex flex-col items-center justify-center py-24 px-4 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200/80 my-auto">
-            <ClipboardList className="w-8 h-8 text-slate-300 mb-2" />
-            <p className="text-[11px] font-medium tracking-normal font-sans text-slate-400 leading-relaxed max-w-[180px]">
-              Selecciona un registro para ver el desglose
+          /* Estado vacío */
+          <div className="flex flex-col items-center justify-center h-full min-h-[500px] p-8 text-center">
+            <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <ClipboardList className="w-10 h-10 text-slate-300" />
+            </div>
+            <h4 className="font-bold text-slate-700 text-lg mb-1">Ninguna incidencia seleccionada</h4>
+            <p className="text-sm text-slate-400 max-w-[240px]">
+              Haz clic en una fila de la tabla para ver los detalles completos del registro.
             </p>
           </div>
         )}

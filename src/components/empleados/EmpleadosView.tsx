@@ -35,11 +35,12 @@ interface Colaborador {
   fecha_fin_contrato?: string;
   cedula?: string;              
   cuenta_bancaria?: string;     
-  banco?: string;               
-  tipo_jornada: "Completa" | "Parcial"; 
+  banco?: string;
+  tipo_cuenta_bancaria?: string;
+  tipo_jornada: "Completa" | "Parcial";
   horas_jornada_parcial?: number;       
-  cantidad_dependientes_tss?: number; // 🏥 Cantidad de dependientes adicionales extras
-  aplicacion_quincena_tss?: "Primera" | "Segunda" | "Ambas"; // 📅 Quincena de descuento
+  cantidad_dependientes_tss?: number;
+  aplicacion_quincena_tss?: "Primera" | "Segunda" | "Ambas";
   estado?: "Activo" | "Inactivo";
 }
 
@@ -51,10 +52,20 @@ const formatMoneda = (val: number) => {
   });
 };
 
-const calcularMontoHorasExtras = (sueldo: number, horas: number): number => {
-  if (!sueldo || !horas) return 0;
+const calcularValorHoraExtra = (sueldo: number): number => {
+  if (!sueldo) return 0;
   const valorHoraNormal = sueldo / (23.83 * 8);
-  return horas * valorHoraNormal * 1.35;
+  return valorHoraNormal * 1.35;
+};
+
+const calcularHorasExtrasDesdeMonto = (sueldo: number, monto: number): number => {
+  const valorHoraExtra = calcularValorHoraExtra(sueldo);
+  if (!valorHoraExtra || !monto) return 0;
+  return monto / valorHoraExtra;
+};
+
+const calcularMontoHorasExtras = (sueldo: number, monto: number): number => {
+  return Number(monto || 0);
 };
 
 const calcularEdadNum = (fechaNacStr?: string): number | null => {
@@ -118,7 +129,8 @@ export default function EmpleadosView() {
     id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna",
     sueldo_base: "27489.57", exento_ponche: false, horas_extras_fijas: false, cantidad_horas_extras: "0", monto_vales_cxc: "0",
     fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01", fecha_fin_contrato: "",
-    cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa" as "Completa" | "Parcial",
+    cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_cuenta_bancaria: "Ahorros",
+    tipo_jornada: "Completa" as "Completa" | "Parcial",
     horas_jornada_parcial: "8", cantidad_dependientes_tss: "0", aplicacion_quincena_tss: "Segunda" as "Primera" | "Segunda" | "Ambas"
   });
 
@@ -140,7 +152,8 @@ export default function EmpleadosView() {
         horas_jornada_parcial: 8, 
         cantidad_horas_extras: 0, 
         cantidad_dependientes_tss: 0, 
-        aplicacion_quincena_tss: "Segunda", 
+        aplicacion_quincena_tss: "Segunda",
+        tipo_cuenta_bancaria: "Ahorros",
         ...empSel 
       });
       setIsEditing(false);
@@ -164,14 +177,23 @@ export default function EmpleadosView() {
     if (empleados.some(em => em.id_reloj === nuevo.id_reloj.trim())) return alert(`⚠️ Conflicto: El ID de Reloj ya existe.`);
 
     const creado: Colaborador = {
-      id_reloj: nuevo.id_reloj.trim(), nombre: nuevo.nombre.trim(), cargo: nuevo.cargo.trim(),
-      sucursal_principal: nuevo.sucursal_principal, sucursal_secundaria: nuevo.sucursal_secundaria === "Ninguna" ? undefined : nuevo.sucursal_secundaria,
-      sueldo_base: parseFloat(nuevo.sueldo_base) || 0, exento_ponche: nuevo.exento_ponche, 
-      horas_extras_fijas: nuevo.horas_extras_fijas,
-      cantidad_horas_extras: nuevo.horas_extras_fijas ? (parseInt(nuevo.cantidad_horas_extras, 10) || 0) : undefined,
-      monto_vales_cxc: parseFloat(nuevo.monto_vales_cxc) || 0, fecha_nacimiento: nuevo.fecha_nacimiento || undefined,
-      fecha_inicio_contrato: nuevo.fecha_inicio_contrato || undefined, fecha_fin_contrato: nuevo.fecha_fin_contrato || undefined,
-      cedula: nuevo.cedula.trim() || undefined, cuenta_bancaria: nuevo.cuenta_bancaria.trim() || undefined, banco: nuevo.banco,
+      id_reloj: nuevo.id_reloj.trim(), 
+      nombre: nuevo.nombre.trim().toUpperCase(), 
+      cargo: nuevo.cargo.trim(),
+      sucursal_principal: nuevo.sucursal_principal, 
+      sucursal_secundaria: nuevo.sucursal_secundaria === "Ninguna" ? undefined : nuevo.sucursal_secundaria,
+      sueldo_base: parseFloat(nuevo.sueldo_base) || 0, 
+      exento_ponche: nuevo.exento_ponche, 
+      horas_extras_fijas: (parseFloat(nuevo.cantidad_horas_extras) || 0) > 0,
+      cantidad_horas_extras: parseFloat(nuevo.cantidad_horas_extras) || 0,
+      monto_vales_cxc: parseFloat(nuevo.monto_vales_cxc) || 0, 
+      fecha_nacimiento: nuevo.fecha_nacimiento || undefined,
+      fecha_inicio_contrato: nuevo.fecha_inicio_contrato || undefined, 
+      fecha_fin_contrato: nuevo.fecha_fin_contrato || undefined,
+      cedula: nuevo.cedula.trim() || undefined, 
+      cuenta_bancaria: nuevo.cuenta_bancaria.trim() || undefined, 
+      banco: nuevo.banco,
+      tipo_cuenta_bancaria: nuevo.tipo_cuenta_bancaria,
       tipo_jornada: nuevo.tipo_jornada, 
       horas_jornada_parcial: nuevo.tipo_jornada === "Parcial" ? (parseFloat(nuevo.horas_jornada_parcial) || 0) : undefined,
       cantidad_dependientes_tss: parseInt(nuevo.cantidad_dependientes_tss, 10) || 0,
@@ -186,7 +208,8 @@ export default function EmpleadosView() {
       setNuevo({
         id_reloj: "", nombre: "", cargo: "", sucursal_principal: "Farma Tania I", sucursal_secundaria: "Ninguna", sueldo_base: "27489.57",
         exento_ponche: false, horas_extras_fijas: false, cantidad_horas_extras: "0", monto_vales_cxc: "0", fecha_nacimiento: "", fecha_inicio_contrato: "2026-01-01",
-        fecha_fin_contrato: "", cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_jornada: "Completa", horas_jornada_parcial: "8",
+        fecha_fin_contrato: "", cedula: "", cuenta_bancaria: "", banco: "Banreservas", tipo_cuenta_bancaria: "Ahorros",
+        tipo_jornada: "Completa", horas_jornada_parcial: "8",
         cantidad_dependientes_tss: "0", aplicacion_quincena_tss: "Segunda"
       });
       alert("✅ Colaborador registrado con éxito.");
@@ -195,24 +218,57 @@ export default function EmpleadosView() {
 
   const guardarFicha = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedEmpleadoId && setEmpleados) {
-      const { ...formFichaClean } = formFicha;
-      const fichaFormateada = {
-        ...formFichaClean,
-        sueldo_base: parseFloat(String(formFicha.sueldo_base)) || 0,
-        monto_vales_cxc: parseFloat(String(formFicha.monto_vales_cxc)) || 0,
-        horas_jornada_parcial: formFicha.tipo_jornada === "Parcial" ? (parseFloat(String(formFicha.horas_jornada_parcial)) || 0) : undefined,
-        cantidad_horas_extras: formFicha.horas_extras_fijas ? (parseInt(String(formFicha.cantidad_horas_extras), 10) || 0) : undefined,
-        cantidad_dependientes_tss: parseInt(String(formFicha.cantidad_dependientes_tss), 10) || 0,
-        aplicacion_quincena_tss: formFicha.aplicacion_quincena_tss || "Segunda",
-        sucursal_secundaria: formFicha.sucursal_secundaria === "Ninguna" ? undefined : formFicha.sucursal_secundaria
-      };
-
-      const loteActualizado = empleados.map(e => e.id_reloj === selectedEmpleadoId ? { ...e, ...fichaFormateada } as Colaborador : e);
-      setEmpleados(loteActualizado);
-      setIsEditing(false);
-      alert("✅ Ficha de empleado actualizada.");
-    }
+  
+    if (!empSel || !setEmpleados) return;
+  
+    const fichaFormateada: Colaborador = {
+      ...empSel,
+      ...formFicha,
+  
+      nombre: String(formFicha.nombre ?? empSel.nombre).trim().toUpperCase(),
+      cargo: String(formFicha.cargo ?? empSel.cargo).trim(),
+  
+      sueldo_base: parseFloat(String(formFicha.sueldo_base ?? empSel.sueldo_base)) || 0,
+  
+      horas_extras_fijas: (parseFloat(String(formFicha.cantidad_horas_extras ?? empSel.cantidad_horas_extras ?? 0)) || 0) > 0,
+  
+      monto_vales_cxc:
+        parseFloat(String(formFicha.monto_vales_cxc ?? empSel.monto_vales_cxc ?? 0)) || 0,
+  
+      horas_jornada_parcial:
+        (formFicha.tipo_jornada ?? empSel.tipo_jornada) === "Parcial"
+          ? parseFloat(String(formFicha.horas_jornada_parcial ?? empSel.horas_jornada_parcial ?? 0)) || 0
+          : undefined,
+  
+      cantidad_dependientes_tss:
+        parseInt(String(formFicha.cantidad_dependientes_tss ?? empSel.cantidad_dependientes_tss ?? 0), 10) || 0,
+  
+      aplicacion_quincena_tss:
+        formFicha.aplicacion_quincena_tss ?? empSel.aplicacion_quincena_tss ?? "Segunda",
+  
+      sucursal_secundaria:
+        (formFicha.sucursal_secundaria ?? empSel.sucursal_secundaria ?? "Ninguna") === "Ninguna"
+          ? undefined
+          : formFicha.sucursal_secundaria,
+      
+      tipo_cuenta_bancaria: formFicha.tipo_cuenta_bancaria ?? empSel.tipo_cuenta_bancaria ?? "Ahorros"
+    };
+  
+    const loteActualizado = empleados.map(emp =>
+      emp.id_reloj === empSel.id_reloj ? fichaFormateada : emp
+    );
+  
+    setEmpleados(loteActualizado);
+  
+    localStorage.setItem(
+      "taniapay_local_empleados",
+      JSON.stringify(loteActualizado)
+    );
+  
+    setFormFicha(fichaFormateada);
+    setIsEditing(false);
+  
+    alert("✅ Ficha de empleado actualizada.");
   };
 
   const empleadosFiltrados = useMemo(() => {
@@ -238,7 +294,7 @@ export default function EmpleadosView() {
       let claveGrupo = "No Especificado";
       if (groupBy === "sucursal") claveGrupo = emp.sucursal_principal;
       else if (groupBy === "cargo") claveGrupo = emp.cargo;
-      else if (groupBy === "jornada") claveGrupo = emp.tipo_jornada === "Completa" ? "Jornada Completa" : "Jornada Parcial / Reducida";
+      else if (groupBy === "jornada") claveGrupo = emp.tipo_jornada === "Completa" ? "Jornada Completa" : "Jornada Parcial";
 
       if (!mapa.has(claveGrupo)) mapa.set(claveGrupo, []);
       mapa.get(claveGrupo)!.push(emp);
@@ -423,8 +479,8 @@ export default function EmpleadosView() {
                             <td className="p-3 text-right font-mono">
                               {n.horas_extras_fijas && (n.cantidad_horas_extras || 0) > 0 ? (
                                 <div className="flex flex-col items-end">
-                                  <span className="font-semibold text-emerald-600">{formatMoneda(montoHE)}</span>
-                                  <span className="text-[9px] text-slate-400 font-sans">{n.cantidad_horas_extras}h</span>
+                                  <span className="font-semibold text-emerald-600">{formatMoneda(n.cantidad_horas_extras)}</span>
+                                  <span className="text-[9px] text-slate-400 font-sans">{calcularHorasExtrasDesdeMonto(n.sueldo_base, n.cantidad_horas_extras || 0).toFixed(2)}h</span>
                                 </div>
                               ) : (
                                 <span className="text-slate-300">—</span>
@@ -435,7 +491,7 @@ export default function EmpleadosView() {
                             
                             <td className="p-3 text-center">
                               <div className="flex items-center justify-center gap-2.5">
-                                {n.tipo_jornada === "Parcial" && (
+                                {n.tipo_jornada === "Parcial" && n.horas_jornada_parcial && (
                                   <span className="text-[9px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 text-[#399665] border border-emerald-100/60">
                                     {n.horas_jornada_parcial}h
                                   </span>
@@ -469,7 +525,7 @@ export default function EmpleadosView() {
         className={`${cardClasses} p-5 bg-white shadow-md sticky top-5 max-h-[88vh] overflow-y-auto border-slate-200/50 shrink-0 select-text`}
       >
         {showAltaForm ? (
-          /* FORMULARIO DE ALTA */
+          /* FORMULARIO DE ALTA SIMPLIFICADO */
           <form onSubmit={ejecutarAlta} className="flex flex-col gap-4 text-xs">
             <div className="flex flex-col gap-1 border-b border-slate-100 pb-3">
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Alta de Personal</h4>
@@ -479,11 +535,11 @@ export default function EmpleadosView() {
             <div className="grid grid-cols-3 gap-2.5">
               <div className="flex flex-col gap-1.5 col-span-1">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">ID Reloj</label>
-                <input type="text" required placeholder="Ej: 45" className={`${inputClasses} !pl-3 font-mono font-semibold`} value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} />
+                <input type="text" required placeholder="Ej: T1001" className={`${inputClasses} !pl-3 font-mono font-semibold`} value={nuevo.id_reloj} onChange={e => setNuevo({...nuevo, id_reloj: e.target.value})} />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Nombre Completo</label>
-                <input type="text" required placeholder="JUAN PÉREZ" className={`${inputClasses} !pl-3 uppercase font-medium`} value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value})} />
+                <input type="text" required placeholder="INGINIO CRISÓSTOMO" className={`${inputClasses} !pl-3 uppercase font-medium`} value={nuevo.nombre} onChange={e => setNuevo({...nuevo, nombre: e.target.value.toUpperCase()})} />
               </div>
             </div>
 
@@ -494,7 +550,7 @@ export default function EmpleadosView() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider pl-0.5">Cargo / Puesto</label>
-                <input type="text" required placeholder="Ej: Auxiliar" className={`${inputClasses} !pl-3`} value={nuevo.cargo} onChange={e => setNuevo({...nuevo, cargo: e.target.value})} />
+                <input type="text" required placeholder="Ej: Gerente Operativo" className={`${inputClasses} !pl-3`} value={nuevo.cargo} onChange={e => setNuevo({...nuevo, cargo: e.target.value})} />
               </div>
             </div>
 
@@ -514,10 +570,11 @@ export default function EmpleadosView() {
               </div>
             </div>
 
+            {/* Datos Bancarios con Tipo de Cuenta */}
             <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Dispersión de Nómina</span>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="col-span-1">
                   <select value={nuevo.banco} onChange={e => setNuevo({...nuevo, banco: e.target.value})} className={`${selectClasses} !pl-2.5 bg-white`}>
                     <option value="Banreservas">Banreservas</option>
                     <option value="Banco Popular">Banco Popular</option>
@@ -525,28 +582,50 @@ export default function EmpleadosView() {
                     <option value="Scotiabank">Scotiabank</option>
                   </select>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <input type="text" placeholder="No. Cuenta" className={`${inputClasses} !pl-2.5 font-mono bg-white`} value={nuevo.cuenta_bancaria} onChange={e => setNuevo({...nuevo, cuenta_bancaria: e.target.value})} />
                 </div>
               </div>
+              <div>
+                <select value={nuevo.tipo_cuenta_bancaria} onChange={e => setNuevo({...nuevo, tipo_cuenta_bancaria: e.target.value})} className={`${selectClasses} !pl-2.5 bg-white w-full`}>
+                  <option value="Ahorros">Cuenta de Ahorros</option>
+                  <option value="Corriente">Cuenta Corriente</option>
+                </select>
+              </div>
             </div>
 
+            {/* Estructura Horaria - Solo muestra horas por día */}
             <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Estructura Horaria</span>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <select value={nuevo.tipo_jornada} onChange={e => setNuevo({...nuevo, tipo_jornada: e.target.value as any})} className={`${selectClasses} !pl-2.5 bg-white`}>
-                    <option value="Completa">Jornada Completa</option>
-                    <option value="Parcial">Horas Parciales</option>
+                    <option value="Completa">Jornada Completa (8h)</option>
+                    <option value="Parcial">Jornada Parcial</option>
                   </select>
                 </div>
                 <div>
-                  <input type="number" min="1" max="12" step="0.5" placeholder="Horas diarias" disabled={nuevo.tipo_jornada === "Completa"} className={`${inputClasses} !pl-2.5 font-mono disabled:opacity-40 bg-white`} value={nuevo.tipo_jornada === "Completa" ? "8" : nuevo.horas_jornada_parcial} onChange={e => setNuevo({...nuevo, horas_jornada_parcial: e.target.value})} />
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="12" 
+                    step="0.5" 
+                    placeholder="Horas por día" 
+                    disabled={nuevo.tipo_jornada === "Completa"} 
+                    className={`${inputClasses} !pl-2.5 font-mono disabled:opacity-40 bg-white`} 
+                    value={nuevo.tipo_jornada === "Completa" ? "8" : nuevo.horas_jornada_parcial} 
+                    onChange={e => setNuevo({...nuevo, horas_jornada_parcial: e.target.value})} 
+                  />
+                  {nuevo.tipo_jornada === "Parcial" && (
+                    <div className="text-[10px] text-slate-400 mt-1 pl-1">
+                      Horas por día: {parseFloat(nuevo.horas_jornada_parcial) || 0}h
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* 🏥 CONFIGURACIÓN TSS EN FORMULARIO DE ALTA */}
+            {/* Configuración TSS */}
             <div className="border border-slate-100 p-3 rounded-xl bg-slate-50/50 flex flex-col gap-2.5">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Parámetros TSS</span>
               <div className="grid grid-cols-2 gap-2.5">
@@ -609,8 +688,8 @@ export default function EmpleadosView() {
                 </label>
                 {nuevo.horas_extras_fijas && (
                   <div className="pl-6 flex flex-col gap-1">
-                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Horas quincenales</label>
-                    <input type="number" className={`${inputClasses} bg-white !pl-3 font-mono`} placeholder="Cantidad de horas" value={nuevo.cantidad_horas_extras} onChange={e => setNuevo({...nuevo, cantidad_horas_extras: e.target.value})} />
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Monto Horas Extras</label>
+                    <input type="number" step="0.01" className={`${inputClasses} bg-white !pl-3 font-mono`} placeholder="Monto en dinero" value={nuevo.cantidad_horas_extras} onChange={e => setNuevo({...nuevo, cantidad_horas_extras: e.target.value})} />
                   </div>
                 )}
               </div>
@@ -692,7 +771,7 @@ export default function EmpleadosView() {
               </div>
             </div>
 
-            {/* SECCIÓN BANCARIA */}
+            {/* SECCIÓN BANCARIA con Tipo de Cuenta */}
             <div className="border border-slate-100 rounded-2xl p-3 bg-slate-50/50 space-y-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Cuenta de Dispersión</span>
               <div className="grid grid-cols-2 gap-3">
@@ -710,9 +789,16 @@ export default function EmpleadosView() {
                   <input type="text" disabled={!isEditing} className={`${inputClasses} font-mono bg-white`} value={isEditing ? (formFicha.cuenta_bancaria ?? "") : (empSel.cuenta_bancaria ?? "")} onChange={e => setFormFicha({...formFicha, cuenta_bancaria: e.target.value})} />
                 </div>
               </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Tipo de Cuenta</label>
+                <select disabled={!isEditing} value={isEditing ? (formFicha.tipo_cuenta_bancaria ?? "Ahorros") : (empSel.tipo_cuenta_bancaria ?? "Ahorros")} onChange={e => setFormFicha({...formFicha, tipo_cuenta_bancaria: e.target.value})} className={selectClasses}>
+                  <option value="Ahorros">Cuenta de Ahorros</option>
+                  <option value="Corriente">Cuenta Corriente</option>
+                </select>
+              </div>
             </div>
 
-            {/* REGIMEN OPERATIVO */}
+            {/* REGIMEN OPERATIVO - Solo muestra horas por día */}
             <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Régimen Operativo</span>
               <div className="grid grid-cols-2 gap-3">
@@ -724,13 +810,27 @@ export default function EmpleadosView() {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Cómputo Horas</label>
-                  <input type="number" min="1" max="12" step="0.5" disabled={!isEditing || (isEditing ? formFicha.tipo_jornada === "Completa" : empSel.tipo_jornada !== "Parcial")} className={`${inputClasses} font-mono bg-white`} value={isEditing ? (formFicha.tipo_jornada === "Completa" ? "8" : (formFicha.horas_jornada_parcial ?? "")) : (empSel.tipo_jornada === "Parcial" ? (empSel.horas_jornada_parcial ?? "") : "8")} onChange={e => setFormFicha({...formFicha, horas_jornada_parcial: parseFloat(e.target.value) || 0})} />
+                  <label className="text-[9px] text-slate-400 font-semibold pl-0.5">Horas por día</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="12" 
+                    step="0.5" 
+                    disabled={!isEditing || (isEditing && formFicha.tipo_jornada === "Completa")} 
+                    className={`${inputClasses} font-mono bg-white`} 
+                    value={isEditing ? ((formFicha.tipo_jornada === "Completa") ? "8" : (formFicha.horas_jornada_parcial ?? "")) : ((empSel.tipo_jornada === "Parcial") ? (empSel.horas_jornada_parcial ?? "") : "8")} 
+                    onChange={e => setFormFicha({...formFicha, horas_jornada_parcial: parseFloat(e.target.value) || 0})} 
+                  />
+                  {((isEditing ? formFicha.tipo_jornada : empSel.tipo_jornada) === "Parcial") && (
+                    <div className="text-[10px] text-slate-400 mt-1 pl-1">
+                      Total horas diarias: {isEditing ? (formFicha.horas_jornada_parcial ?? 0) : (empSel.horas_jornada_parcial ?? 0)}h
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* 🏥 SECCIÓN CONTROL TSS ADICIONAL (EXPEDIENTE) */}
+            {/* SECCIÓN CONTROL TSS ADICIONAL (EXPEDIENTE) */}
             <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-100 pb-1">Cálculo de Descuentos TSS</span>
               <div className="grid grid-cols-2 gap-3">
@@ -781,22 +881,52 @@ export default function EmpleadosView() {
                 </div>
                 <input type="checkbox" disabled={!isEditing} className="w-4 h-4 rounded-lg border-slate-300 accent-[#42A873]" checked={isEditing ? formFicha.exento_ponche : empSel.exento_ponche} onChange={e => setFormFicha({...formFicha, exento_ponche: e.target.checked})} />
               </label>
-
               <div className="border border-slate-100 rounded-xl p-2.5 bg-slate-50/20 space-y-2">
-                <label className="flex items-center justify-between cursor-pointer select-none transition-colors">
+                <div>
+                  <span className="font-bold text-slate-700 block text-xs">Horas Extras Fijas</span>
+                  <span className="text-[10px] text-slate-400">
+                    Digita el monto en dinero y el sistema calcula las horas equivalentes
+                  </span>
+                </div>
+
+                <div className="pt-1 grid grid-cols-2 gap-2">
                   <div>
-                    <span className="font-bold text-slate-700 block text-xs">Aprobación de Horas Extras</span>
-                    <span className="text-[10px] text-slate-400">Habilitar horas fijas quincenales</span>
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">
+                      Monto H.E.
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      disabled={!isEditing}
+                      className={`${inputClasses} bg-white !pl-3 font-mono font-bold text-slate-700`}
+                      value={
+                        isEditing
+                          ? (formFicha.cantidad_horas_extras ?? 0)
+                          : (empSel.cantidad_horas_extras ?? 0)
+                      }
+                      onChange={e =>
+                        setFormFicha({
+                          ...formFicha,
+                          horas_extras_fijas: Number(e.target.value) > 0,
+                          cantidad_horas_extras: parseFloat(e.target.value) || 0
+                        })
+                      }
+                    />
                   </div>
-                  <input type="checkbox" disabled={!isEditing} className="w-4 h-4 rounded-lg border-slate-300 accent-[#42A873]" checked={isEditing ? formFicha.horas_extras_fijas : empSel.horas_extras_fijas} onChange={e => setFormFicha({...formFicha, horas_extras_fijas: e.target.checked})} />
-                </label>
-                
-                {(isEditing ? formFicha.horas_extras_fijas : empSel.horas_extras_fijas) && (
-                  <div className="pt-1 flex items-center justify-between gap-4">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Cantidad quincenal:</span>
-                    <input type="number" disabled={!isEditing} className={`${inputClasses} bg-white !pl-3 max-w-[120px] font-mono font-bold text-slate-700`} value={isEditing ? (formFicha.cantidad_horas_extras ?? 0) : (empSel.cantidad_horas_extras ?? 0)} onChange={e => setFormFicha({...formFicha, cantidad_horas_extras: parseInt(e.target.value, 10) || 0})} />
+
+                  <div>
+                    <label className="text-[9px] text-slate-400 font-bold uppercase">
+                      Horas calculadas
+                    </label>
+                    <div className="bg-white border border-slate-200/60 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-slate-700">
+                      {calcularHorasExtrasDesdeMonto(
+                        Number(isEditing ? formFicha.sueldo_base : empSel.sueldo_base) || 0,
+                        Number(isEditing ? formFicha.cantidad_horas_extras : empSel.cantidad_horas_extras) || 0
+                      ).toFixed(2)} h
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </form>
