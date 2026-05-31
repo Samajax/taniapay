@@ -9,7 +9,7 @@ import {
 
 import { 
   formatMonto, calcularDescuentoPonche, obtenerAlertaSimplificada, 
-  obtenerMinutosPenalizados, // <--- Función añadida
+  obtenerMinutosPenalizados, 
   AsistenciaRefinada, EmpleadoAsistenciaGrupal 
 } from "./hooks/useAsistenciaUtils";
 import ResumenAlertasTable from "./subcomponents/ResumenAlertasTable";
@@ -24,7 +24,11 @@ export default function PonchesView() {
     corregirPoncheIndividual, 
     corregirTodosErroresMasivo,
     aprobarHorasExtras,
-    configTasas 
+    configTasas,
+    // --- NUEVAS FUNCIONES DESESTRUCTURADAS ---
+    agregarNuevoRegistroAsistencia,
+    eliminarRegistroAsistencia,
+    actualizarTurnoOEstado
   } = usePay();
   
   // --- ESTADOS DE UI ---
@@ -35,7 +39,6 @@ export default function PonchesView() {
   const [filterFecha, setFilterFecha] = useState("Todos"); 
   const [selectedIdReloj, setSelectedIdReloj] = useState<string>(""); 
 
-  // --- ESTADOS DE EDICIÓN LOCAL BLINDADOS ---
   const [editandoRegistroId, setEditandoRegistroId] = useState<string | null>(null);
   const [nuevaEntrada, setNuevaEntrada] = useState("");
   const [nuevaSalida, setNuevaSalida] = useState("");
@@ -60,15 +63,15 @@ export default function PonchesView() {
 
     return registrosOrdenados.map((rec) => {
       const emp = empleados.find(e => e.id_reloj === rec.id_reloj);
-      const esFeriado = feriadosRD.some(f => f.fecha === rec.fecha);
+      const esFeriado = feriadosRD.some(f => f.fecha === rec.fecha) || rec.turno === "FERIADO";
       const coincidenciaInc = incidencias.find(inc => inc.id_reloj === rec.id_reloj && rec.fecha === inc.fecha_inicio);
       
       const entrada = rec.entrada || "—";
       const salida = rec.salida || "—";
       const tienePonche = entrada !== "—";
 
-      let es_dia_libre = false;
-      if (!tienePonche && !esFeriado && !coincidenciaInc) {
+      let es_dia_libre = rec.turno === "LIBRE";
+      if (!tienePonche && !esFeriado && !coincidenciaInc && rec.turno !== "LIBRE") {
         contadoresLibres[rec.id_reloj] = (contadoresLibres[rec.id_reloj] || 0) + 1;
         if (contadoresLibres[rec.id_reloj] <= 2) es_dia_libre = true;
       }
@@ -77,7 +80,7 @@ export default function PonchesView() {
       let extrasMins = 0;
       let requiereConfirmacionHE = false;
 
-      if (tienePonche && emp) {
+      if (tienePonche && emp && !es_dia_libre && rec.turno !== "FERIADO") {
         const tEntrada = parseMins(entrada);
         const tSalida = parseMins(salida);
         const tTeoEntrada = parseMins(emp.hora_inicio_turno || "08:00");
@@ -88,9 +91,8 @@ export default function PonchesView() {
         if (extrasMins > 0 && tardanzaMins > 0) requiereConfirmacionHE = true;
       }
 
-      // Inyección de minutos penalizados
       const minsPenalizados = obtenerMinutosPenalizados(
-        { ...rec, entrada_normalizada: entrada, salida_normalizada: salida, es_feriado: esFeriado }, 
+        { ...rec, entrada_normalizada: entrada, salida_normalizada: salida, es_feriado: esFeriado, es_dia_libre }, 
         emp
       );
 
@@ -103,14 +105,14 @@ export default function PonchesView() {
         incidencia_detectada: coincidenciaInc?.tipo,
         minutos_tardanza: tardanzaMins,
         minutos_extras: extrasMins,
-        minutos_penalizados: minsPenalizados, // <--- Propiedad añadida
+        minutos_penalizados: minsPenalizados,
         requiereConfirmacionHE,
         sucursal_ponche: emp?.sucursal_principal || "Tania 1"
       };
     });
   }, [asistencia, incidencias, empleados, feriadosRD]);
 
-  // --- FILTRADO DE INTERFAZ ---
+  // --- FILTRADO ---
   const registrosFiltrados = useMemo(() => {
     return asistenciaEnriquecida.filter((rec) => {
       const emp = empleados.find(e => e.id_reloj === rec.id_reloj);
@@ -135,13 +137,13 @@ export default function PonchesView() {
           id_reloj: emp.id_reloj, nombre: emp.nombre, cargo: emp.cargo, 
           sucursal_principal: emp.sucursal_principal, exento: emp.exento_ponche, 
           totalDescuento: 0, 
-          totalMinutosPenalizados: 0, // <--- Inicializado para el resumen
+          totalMinutosPenalizados: 0,
           alertasAcumuladas: new Set(), records: [] 
         };
       }
       const monto = calcularDescuentoPonche(rec, emp, configTasas);
       mapa[rec.id_reloj].totalDescuento += monto;
-      mapa[rec.id_reloj].totalMinutosPenalizados += (rec.minutos_penalizados || 0); // <--- Acumulación
+      mapa[rec.id_reloj].totalMinutosPenalizados += (rec.minutos_penalizados || 0);
       mapa[rec.id_reloj].records.push(rec);
       const alerta = obtenerAlertaSimplificada(rec, emp);
       if (alerta && alerta !== "Correcto") mapa[rec.id_reloj].alertasAcumuladas.add(alerta);
@@ -243,12 +245,25 @@ export default function PonchesView() {
             <ResumenAlertasTable listaGroupedTardanzas={listaGrouped} selectedIdReloj={selectedIdReloj} setSelectedIdReloj={setSelectedIdReloj} />
           ) : (
             <HistorialPonchesTable 
-              registros={registrosFiltrados} empleados={empleados} tasas={configTasas} 
-              selectedIdReloj={selectedIdReloj} setSelectedIdReloj={setSelectedIdReloj}
-              editandoRegistroId={editandoRegistroId} nuevaEntrada={nuevaEntrada} nuevaSalida={nuevaSalida}
-              setNuevaEntrada={setNuevaEntrada} setNuevaSalida={setNuevaSalida}
-              iniciarEdicion={handleEdit} guardarEdicion={handleSave} cancelarEdicion={() => setEditandoRegistroId(null)}
+              registros={registrosFiltrados} 
+              empleados={empleados} 
+              tasas={configTasas} 
+              selectedIdReloj={selectedIdReloj} 
+              setSelectedIdReloj={setSelectedIdReloj}
+              editandoRegistroId={editandoRegistroId} 
+              nuevaEntrada={nuevaEntrada} 
+              nuevaSalida={nuevaSalida}
+              setNuevaEntrada={setNuevaEntrada} 
+              setNuevaSalida={setNuevaSalida}
+              iniciarEdicion={handleEdit} 
+              guardarEdicion={handleSave} 
+              cancelarEdicion={() => setEditandoRegistroId(null)}
               aprobarHE={handleAprobarHE}
+              // --- VINCULACIÓN DE NUEVAS FUNCIONES ---
+              modoEdicionActivo={modoEdicionActivo}
+              onAgregar={agregarNuevoRegistroAsistencia}
+              onEliminar={eliminarRegistroAsistencia}
+              onCambiarTurno={actualizarTurnoOEstado}
             />
           )}
         </div>

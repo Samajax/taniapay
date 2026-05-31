@@ -31,6 +31,10 @@ interface PayContextType {
   corregirTodosErroresMasivo: () => void;
   aprobarHorasExtras: (id_compuesto: string) => void;
   actualizarConfigTasas: (nuevasTasas: any) => void;
+  // Nuevas funciones CRUD
+  agregarNuevoRegistroAsistencia: (id_reloj: string, fecha: string) => void;
+  eliminarRegistroAsistencia: (id_compuesto: string) => void;
+  actualizarTurnoOEstado: (id_compuesto: string, nuevoEstado: string) => void;
   fechaSistema: string;
   periodoInicio: string;
   periodoFin: string;
@@ -65,19 +69,40 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
     setAsistencia(data);
   };
 
-  // --- CORRECCIÓN POR ID COMPUESTO (id_reloj-fecha) ---
-  const corregirPoncheIndividual = (id_compuesto: string, hEntrada: string, hSalida: string) => {
+  // --- AÑADIR REGISTRO ---
+  const agregarNuevoRegistroAsistencia = (id_reloj: string, fecha: string) => {
+    const existe = asistencia.some(r => r.id_reloj === id_reloj && r.fecha === fecha);
+    if (existe) return;
+
+    const nuevoRegistro: AsistenciaRecord = {
+      id_registro: `${id_reloj}-${fecha}`,
+      id_reloj,
+      fecha,
+      entrada: "08:00",
+      salida: "17:00",
+      turno: "Matutino",
+      error_reloj: false
+    };
+    saveAndSetAsistencia([nuevoRegistro, ...asistencia]);
+  };
+
+  // --- ELIMINAR REGISTRO ---
+  const eliminarRegistroAsistencia = (id_compuesto: string) => {
+    const filtradas = asistencia.filter(rec => `${rec.id_reloj}-${rec.fecha}` !== id_compuesto);
+    saveAndSetAsistencia(filtradas);
+  };
+
+  // --- ACTUALIZAR TURNO / ESTADO (Lógica de limpieza para Libre/Feriado) ---
+  const actualizarTurnoOEstado = (id_compuesto: string, nuevoEstado: string) => {
     const actualizadas = asistencia.map((rec) => {
-      // Creamos la llave de comparación para cada registro
-      const currentId = `${rec.id_reloj}-${rec.fecha}`;
-      
-      if (currentId === id_compuesto) {
-        return { 
-          ...rec, 
-          entrada: hEntrada, 
-          salida: hSalida, 
-          error_reloj: false, 
-          tipo_incidencia: "Normal" 
+      if (`${rec.id_reloj}-${rec.fecha}` === id_compuesto) {
+        const esEspecial = nuevoEstado === "LIBRE" || nuevoEstado === "FERIADO";
+        return {
+          ...rec,
+          turno: nuevoEstado,
+          entrada: esEspecial ? "—" : (rec.entrada === "—" ? "08:00" : rec.entrada),
+          salida: esEspecial ? "—" : (rec.salida === "—" ? "17:00" : rec.salida),
+          error_reloj: esEspecial ? false : rec.error_reloj
         };
       }
       return rec;
@@ -85,7 +110,17 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
     saveAndSetAsistencia(actualizadas);
   };
 
-  // --- APROBACIÓN POR ID COMPUESTO ---
+  const corregirPoncheIndividual = (id_compuesto: string, hEntrada: string, hSalida: string) => {
+    const actualizadas = asistencia.map((rec) => {
+      const currentId = `${rec.id_reloj}-${rec.fecha}`;
+      if (currentId === id_compuesto) {
+        return { ...rec, entrada: hEntrada, salida: hSalida, error_reloj: false };
+      }
+      return rec;
+    });
+    saveAndSetAsistencia(actualizadas);
+  };
+
   const aprobarHorasExtras = (id_compuesto: string) => {
     const actualizadas = asistencia.map((rec) => {
       const currentId = `${rec.id_reloj}-${rec.fecha}`;
@@ -99,13 +134,6 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
       if (rec.error_reloj) {
         let hEntrada = rec.entrada && rec.entrada !== "—" ? rec.entrada : "08:00";
         let hSalida = rec.salida && rec.salida !== "—" ? rec.salida : "17:00";
-
-        if (rec.turno && rec.turno.includes("-")) {
-          const [tE, tS] = rec.turno.split("-");
-          if (rec.entrada === "—") hEntrada = tE;
-          if (rec.salida === "—") hSalida = tS;
-        }
-
         return { ...rec, entrada: hEntrada, salida: hSalida, error_reloj: false };
       }
       return rec;
@@ -118,6 +146,7 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
       activeTab, setActiveTab, empleados, asistencia, incidencias,
       configTasas, feriados: [], 
       corregirPoncheIndividual, corregirTodosErroresMasivo, aprobarHorasExtras,
+      agregarNuevoRegistroAsistencia, eliminarRegistroAsistencia, actualizarTurnoOEstado,
       actualizarConfigTasas: () => {},
       fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
       periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
