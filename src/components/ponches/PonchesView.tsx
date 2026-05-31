@@ -9,6 +9,7 @@ import {
 
 import { 
   formatMonto, calcularDescuentoPonche, obtenerAlertaSimplificada, 
+  obtenerMinutosPenalizados, // <--- Función añadida
   AsistenciaRefinada, EmpleadoAsistenciaGrupal 
 } from "./hooks/useAsistenciaUtils";
 import ResumenAlertasTable from "./subcomponents/ResumenAlertasTable";
@@ -35,7 +36,7 @@ export default function PonchesView() {
   const [selectedIdReloj, setSelectedIdReloj] = useState<string>(""); 
 
   // --- ESTADOS DE EDICIÓN LOCAL BLINDADOS ---
-  const [editandoRegistroId, setEditandoRegistroId] = useState<string | null>(null); // Guardará `${id_reloj}-${fecha}`
+  const [editandoRegistroId, setEditandoRegistroId] = useState<string | null>(null);
   const [nuevaEntrada, setNuevaEntrada] = useState("");
   const [nuevaSalida, setNuevaSalida] = useState("");
   const [panelWidth] = useState(450); 
@@ -46,7 +47,7 @@ export default function PonchesView() {
     { fecha: "2026-05-04", nombre: "Día del Trabajo" }
   ]);
 
-  // --- MOTOR DE ENRIQUECIMIENTO (Lógica de Negocio y Jerarquía de Reglas) ---
+  // --- MOTOR DE ENRIQUECIMIENTO ---
   const asistenciaEnriquecida: AsistenciaRefinada[] = useMemo(() => {
     const parseMins = (h: string) => {
       if (!h || h === "—" || h.trim() === "") return 0;
@@ -54,7 +55,6 @@ export default function PonchesView() {
       return hrs * 60 + mins;
     };
 
-    // Ordenamiento cronológico para conteo secuencial correcto de descansos
     const registrosOrdenados = [...asistencia].sort((a, b) => a.fecha.localeCompare(b.fecha));
     const contadoresLibres: Record<string, number> = {};
 
@@ -67,14 +67,12 @@ export default function PonchesView() {
       const salida = rec.salida || "—";
       const tienePonche = entrada !== "—";
 
-      // Capa de Regla: Detección Automática de Día Libre (Máx 2 por quincena)
       let es_dia_libre = false;
       if (!tienePonche && !esFeriado && !coincidenciaInc) {
         contadoresLibres[rec.id_reloj] = (contadoresLibres[rec.id_reloj] || 0) + 1;
         if (contadoresLibres[rec.id_reloj] <= 2) es_dia_libre = true;
       }
 
-      // Capa de Regla: Métricas de Tiempo Real
       let tardanzaMins = 0;
       let extrasMins = 0;
       let requiereConfirmacionHE = false;
@@ -85,13 +83,16 @@ export default function PonchesView() {
         const tTeoEntrada = parseMins(emp.hora_inicio_turno || "08:00");
         const tTeoSalida = parseMins(emp.hora_fin_turno || "17:00");
 
-        // Margen de gracia de 10 minutos
         if (tEntrada > tTeoEntrada + 10) tardanzaMins = tEntrada - tTeoEntrada;
         if (tSalida > tTeoSalida) extrasMins = tSalida - tTeoSalida;
-        
-        // Validación Cruzada: Si hay HE y tardanza en el mismo día, entra en conflicto (Bloqueada)
         if (extrasMins > 0 && tardanzaMins > 0) requiereConfirmacionHE = true;
       }
+
+      // Inyección de minutos penalizados
+      const minsPenalizados = obtenerMinutosPenalizados(
+        { ...rec, entrada_normalizada: entrada, salida_normalizada: salida, es_feriado: esFeriado }, 
+        emp
+      );
 
       return { 
         ...rec, 
@@ -102,6 +103,7 @@ export default function PonchesView() {
         incidencia_detectada: coincidenciaInc?.tipo,
         minutos_tardanza: tardanzaMins,
         minutos_extras: extrasMins,
+        minutos_penalizados: minsPenalizados, // <--- Propiedad añadida
         requiereConfirmacionHE,
         sucursal_ponche: emp?.sucursal_principal || "Tania 1"
       };
@@ -122,7 +124,7 @@ export default function PonchesView() {
     });
   }, [asistenciaEnriquecida, subTab, search, filterSucursal, filterFecha, empleados]);
 
-  // --- AGRUPACIÓN CON REGLAS FINANCIERAS PARA REPORTES ---
+  // --- AGRUPACIÓN ---
   const listaGrouped = useMemo(() => {
     const mapa: Record<string, EmpleadoAsistenciaGrupal> = {};
     registrosFiltrados.forEach((rec) => {
@@ -132,11 +134,14 @@ export default function PonchesView() {
         mapa[rec.id_reloj] = { 
           id_reloj: emp.id_reloj, nombre: emp.nombre, cargo: emp.cargo, 
           sucursal_principal: emp.sucursal_principal, exento: emp.exento_ponche, 
-          totalDescuento: 0, alertasAcumuladas: new Set(), records: [] 
+          totalDescuento: 0, 
+          totalMinutosPenalizados: 0, // <--- Inicializado para el resumen
+          alertasAcumuladas: new Set(), records: [] 
         };
       }
       const monto = calcularDescuentoPonche(rec, emp, configTasas);
       mapa[rec.id_reloj].totalDescuento += monto;
+      mapa[rec.id_reloj].totalMinutosPenalizados += (rec.minutos_penalizados || 0); // <--- Acumulación
       mapa[rec.id_reloj].records.push(rec);
       const alerta = obtenerAlertaSimplificada(rec, emp);
       if (alerta && alerta !== "Correcto") mapa[rec.id_reloj].alertasAcumuladas.add(alerta);
@@ -144,13 +149,10 @@ export default function PonchesView() {
     return Object.values(mapa);
   }, [registrosFiltrados, empleados, configTasas]);
 
-  // --- MANEJADORES DE OPERACIONES (Sincronizados por ID compuesto) ---
+  // --- MANEJADORES ---
   const handleEdit = (rec: any) => {
-    // Generamos el id de control único id_reloj + fecha
     const idUnicoFila = `${rec.id_reloj}-${rec.fecha}`;
     setEditandoRegistroId(idUnicoFila);
-    
-    // Seteamos la data exacta en el buffer de inputs locales
     setNuevaEntrada(rec.entrada_normalizada !== "—" ? rec.entrada_normalizada : "08:00");
     setNuevaSalida(rec.salida_normalizada !== "—" ? rec.salida_normalizada : "17:00");
   };
@@ -228,7 +230,6 @@ export default function PonchesView() {
           ))}
         </div>
 
-        {/* SECCIÓN DE RENDERIZADO DE TABLAS */}
         <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
           <div className="flex gap-2 p-3 bg-slate-50/50 border-b items-center justify-between">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tabla Operativa</span>
@@ -253,7 +254,6 @@ export default function PonchesView() {
         </div>
       </div>
 
-      {/* EXPEDIENTE LATERAL */}
       <ExpedienteLateral 
         panelWidth={panelWidth} 
         empleado={empleados.find(e => e.id_reloj === selectedIdReloj)} 

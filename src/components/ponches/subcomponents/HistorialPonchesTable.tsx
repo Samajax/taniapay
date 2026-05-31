@@ -15,7 +15,7 @@ interface Props {
   tasas: any;
   selectedIdReloj: string;
   setSelectedIdReloj: (id: string) => void;
-  editandoRegistroId: string | null; // Guardará "id_reloj-fecha"
+  editandoRegistroId: string | null;
   nuevaEntrada: string;
   nuevaSalida: string;
   setNuevaEntrada: (v: string) => void;
@@ -53,12 +53,8 @@ export default function HistorialPonchesTable({
           const montoCalculado = calcularDescuentoPonche(rec, emp, tasas);
           const alerta = obtenerAlertaSimplificada(rec, emp);
           
-          // Generamos una llave única garantizada para esta fila combinando ID y Fecha
           const filaIdentificadorUnico = `${rec.id_reloj}-${rec.fecha}`;
-          
-          // REGLA CRÍTICA: Solo esta fila se activará si el ID de edición coincide perfectamente
           const estaEditando = editandoRegistroId !== null && editandoRegistroId === filaIdentificadorUnico;
-          
           const heBloqueada = rec.requiereConfirmacionHE && !rec.he_aprobada;
 
           return (
@@ -86,7 +82,6 @@ export default function HistorialPonchesTable({
                 {rec.sucursal_ponche}
               </td>
               
-              {/* ENTRADA EDITABLE */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {estaEditando ? (
                   <input 
@@ -102,7 +97,6 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              {/* SALIDA EDITABLE */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {estaEditando ? (
                   <input 
@@ -159,14 +153,18 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              <td className="p-3 text-right font-mono font-bold border-b border-transparent group-hover:border-slate-100 pr-6">
-                {montoCalculado < 0 ? (
-                  <span className="text-rose-600">-{formatMonto(Math.abs(montoCalculado))}</span>
-                ) : montoCalculado > 0 ? (
-                  <span className="text-emerald-600">+{formatMonto(montoCalculado)}</span>
-                ) : (
-                  <span className="text-slate-400">RD$ 0.00</span>
-                )}
+              <td className="p-3 text-right font-mono border-b border-transparent group-hover:border-slate-100 pr-6">
+                <div className="flex flex-col items-end">
+                  {/* Muestra los minutos descontados (tardanza + salida anticipada) */}
+                  {rec.minutos_penalizados > 0 && (
+                    <span className="text-[9px] text-orange-500 font-bold uppercase mb-0.5">
+                      -{rec.minutos_penalizados} min
+                    </span>
+                  )}
+                  <span className={`font-bold ${montoCalculado < 0 ? "text-rose-600" : montoCalculado > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                    {montoCalculado === 0 ? "RD$ 0.00" : (montoCalculado > 0 ? "+" : "-") + formatMonto(Math.abs(montoCalculado))}
+                  </span>
+                </div>
               </td>
               
               <td className="p-3 pr-6 text-center border-b border-transparent group-hover:border-slate-100">

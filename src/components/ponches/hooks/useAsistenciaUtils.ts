@@ -10,6 +10,7 @@ export interface AsistenciaRefinada extends AsistenciaRecord {
   minutos_extras?: number;
   requiereConfirmacionHE?: boolean;
   he_aprobada?: boolean;
+  minutos_penalizados?: number; // Agregamos este campo a la interfaz
 }
 
 export interface EmpleadoAsistenciaGrupal {
@@ -19,6 +20,7 @@ export interface EmpleadoAsistenciaGrupal {
   sucursal_principal: string;
   exento: boolean;
   totalDescuento: number;
+  totalMinutosPenalizados: number; // Agregamos para el resumen
   alertasAcumuladas: Set<string>;
   records: AsistenciaRefinada[];
 }
@@ -41,29 +43,23 @@ export const getAlertaEstilo = (alerta: string): string => {
 };
 
 export function formatNombreTurno(turnoString: string, horaEntrada: string): string {
-    if (turnoString) {
-      const tClean = turnoString.toLowerCase();
-      if (tClean.includes("matutino") || tClean.includes("08:00") || tClean.includes("07:30")) return "Matutino";
-      if (tClean.includes("vespertino") || tClean.includes("14:30") || tClean.includes("15:00")) return "Vespertino";
-    }
-    if (!horaEntrada || horaEntrada === "—") return "Matutino";
-    const [h] = horaEntrada.split(":").map(Number);
-    return h >= 13 ? "Vespertino" : "Matutino";
+  if (turnoString) {
+    const tClean = turnoString.toLowerCase();
+    if (tClean.includes("matutino") || tClean.includes("08:00") || tClean.includes("07:30")) return "Matutino";
+    if (tClean.includes("vespertino") || tClean.includes("14:30") || tClean.includes("15:00")) return "Vespertino";
   }
+  if (!horaEntrada || horaEntrada === "—") return "Matutino";
+  const [h] = horaEntrada.split(":").map(Number);
+  return h >= 13 ? "Vespertino" : "Matutino";
+}
 
 /**
- * REGLAS DE NEGOCIO "TANIA PAY" 2026:
- * 1. Margen de Gracia: 10 mins (entrada y salida).
- * 2. Horario Estricto: Llegar temprano no compensa irse antes de la hora.
- * 3. Feriado: Pago proporcional al tiempo real laborado.
+ * LÓGICA DE EXTRACCIÓN DE MINUTOS PENALIZADOS
+ * Centralizamos esto para usarlo en el cálculo y en la vista.
  */
-export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Empleado | undefined, tasas: any) => {
-  if (!emp || emp.exento_ponche) return 0;
+export const obtenerMinutosPenalizados = (record: AsistenciaRefinada, emp: Empleado | undefined): number => {
+  if (!emp || emp.exento_ponche || record.es_feriado || record.incidencia_detectada) return 0;
   
-  const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
-
-  if (record.incidencia_detectada) return 0;
-
   const parseMins = (h: string) => {
     if (!h || h === "—") return 0;
     const [hrs, mins] = h.split(":").map(Number);
@@ -75,10 +71,28 @@ export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Emplead
   const tEntradaTeo = parseMins(emp.hora_inicio_turno || "08:00");
   const tSalidaTeo = parseMins(emp.hora_fin_turno || "17:00");
 
-  // 1. FERIADOS (Pago proporcional al tiempo real laborado)
+  let mins = 0;
+  // Entrada (Margen 10 min)
+  if (tEntradaReal > tEntradaTeo + 10) mins += (tEntradaReal - tEntradaTeo);
+  // Salida (Margen 10 min)
+  if (tSalidaReal > 0 && tSalidaReal < tSalidaTeo - 10) mins += (tSalidaTeo - tSalidaReal);
+
+  return mins;
+};
+
+/**
+ * REGLAS DE NEGOCIO "TANIA PAY" 2026:
+ */
+export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Empleado | undefined, tasas: any) => {
+  if (!emp || emp.exento_ponche) return 0;
+  const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
+  if (record.incidencia_detectada) return 0;
+
+  // 1. FERIADOS (Pago proporcional)
   if (record.es_feriado && tienePonche) {
-    const minutosTrabajados = tSalidaReal - tEntradaReal;
-    return (minutosTrabajados / 60) * tasas.hora;
+    const parseMins = (h: string) => h.split(":").map(Number)[0] * 60 + h.split(":").map(Number)[1];
+    const mins = parseMins(record.salida_normalizada || "00:00") - parseMins(record.entrada_normalizada || "00:00");
+    return (mins / 60) * tasas.hora;
   }
 
   // 2. AUSENCIAS
@@ -87,27 +101,9 @@ export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Emplead
     return -tasas.diaTrabajo; 
   }
 
-  // 3. LÓGICA DE INCUMPLIMIENTO DE JORNADA
-  let minutosPenalizados = 0;
-
-  // A) Tardanza en Entrada (Margen 10 min)
-  if (tEntradaReal > tEntradaTeo + 10) {
-    minutosPenalizados += (tEntradaReal - tEntradaTeo);
-  }
-
-  // B) Salida Anticipada (Margen 10 min)
-  // Si sale antes de (Hora Teórica - 10), se penaliza el tiempo faltante completo
-  if (tSalidaReal < tSalidaTeo - 10) {
-    minutosPenalizados += (tSalidaTeo - tSalidaReal);
-  }
-
-  // C) Bloqueo de Compensación: No hay restas si tEntradaReal < tEntradaTeo
-
-  if (minutosPenalizados > 0) {
-    return -(minutosPenalizados * (tasas.hora / 60));
-  }
-
-  return 0;
+  // 3. INCUMPLIMIENTO (Tardanza + Salida Anticipada)
+  const mins = obtenerMinutosPenalizados(record, emp);
+  return mins > 0 ? -(mins * (tasas.hora / 60)) : 0;
 };
 
 export const obtenerAlertaSimplificada = (record: AsistenciaRefinada, emp: Empleado | undefined) => {
@@ -116,24 +112,15 @@ export const obtenerAlertaSimplificada = (record: AsistenciaRefinada, emp: Emple
   if (record.error_reloj) return "Irregularidad";
   
   const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
-
   if (!tienePonche) {
     if (record.es_feriado || record.es_dia_libre) return "";
     return "Ausencia";
   }
 
-  // Detección de incumplimiento para alerta visual
-  const parseMins = (h: string) => h ? h.split(":").map(Number)[0] * 60 + h.split(":").map(Number)[1] : 0;
-  const tSalidaReal = parseMins(record.salida_normalizada || "");
-  const tSalidaTeo = parseMins(emp.hora_fin_turno || "17:00");
-
   if (record.requiereConfirmacionHE && !record.he_aprobada) return "HE por Aprobar";
   
-  // Se activa "Tardanza" si llegó tarde O si salió temprano
-  const salidaTemprana = tSalidaReal < tSalidaTeo - 10;
-  if ((record.minutos_tardanza && record.minutos_tardanza > 0) || salidaTemprana) {
-    if (!emp.exento_ponche) return "Tardanza";
-  }
+  // Usamos la nueva función para determinar si hay alerta de tardanza/salida anticipada
+  if (obtenerMinutosPenalizados(record, emp) > 0) return "Tardanza";
   
   return "Correcto";
 };

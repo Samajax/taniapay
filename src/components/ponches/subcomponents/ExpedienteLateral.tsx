@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import { 
-  CalendarDays, AlertTriangle, Edit3, LogIn, LogOut, X, 
-  CheckCircle, Clock, Users, ShieldCheck, Info, DollarSign 
+  CalendarDays, Edit3, LogIn, LogOut, 
+  Clock, Users, ShieldCheck, Info 
 } from "lucide-react";
 import { 
   formatNombreTurno, formatMonto, calcularDescuentoPonche, obtenerAlertaSimplificada 
@@ -85,8 +85,6 @@ export default function ExpedienteLateral({
               const montoDia = calcularDescuentoPonche(p, empleado, tasas);
               const alerta = obtenerAlertaSimplificada(p, empleado);
               const estaEditandoPanel = editandoPanelId === p.id_registro;
-              
-              // Validación Cruzada: HE bloqueada si hay tardanza sin aprobar
               const heBloqueada = p.requiereConfirmacionHE && !p.he_aprobada;
 
               return (
@@ -97,12 +95,17 @@ export default function ExpedienteLateral({
                     <div className="flex items-center gap-2">
                       <CalendarDays className={`w-3.5 h-3.5 ${p.error_reloj ? "text-red-400" : "text-slate-400"}`} />
                       <span className="font-mono font-bold text-slate-700 text-[11px]">{p.fecha}</span>
-                      {p.es_dia_libre && <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase font-bold">Gris: Libre</span>}
+                      {p.es_dia_libre && <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded uppercase font-bold">Libre</span>}
                       {p.es_feriado && <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-bold">Feriado</span>}
                     </div>
-                    <span className={`font-mono font-bold text-[11px] ${montoDia < 0 ? "text-rose-600" : montoDia > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                      {montoDia === 0 ? "RD$ 0.00" : (montoDia > 0 ? "+" : "") + formatMonto(montoDia)}
-                    </span>
+                    <div className="flex flex-col items-end">
+                      {p.minutos_penalizados > 0 && (
+                         <span className="text-[8px] text-orange-500 font-bold uppercase">-{p.minutos_penalizados} min</span>
+                      )}
+                      <span className={`font-mono font-bold text-[11px] ${montoDia < 0 ? "text-rose-600" : montoDia > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                        {montoDia === 0 ? "RD$ 0.00" : (montoDia > 0 ? "+" : "") + formatMonto(montoDia)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* CONTENIDO DEL REGISTRO */}
@@ -121,7 +124,7 @@ export default function ExpedienteLateral({
                         </div>
                         <div className="flex gap-2">
                           <button onClick={cancelarEdicionPanel} className="flex-1 bg-slate-100 text-slate-600 text-[10px] font-bold py-2 rounded-lg hover:bg-slate-200">Cancelar</button>
-                          <button onClick={() => guardarEdicionPanel(p.id_registro)} className="flex-1 bg-emerald-600 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-emerald-700">Guardar</button>
+                          <button onClick={() => guardarEdicionPanel(`${p.id_reloj}-${p.fecha}`)} className="flex-1 bg-emerald-600 text-white text-[10px] font-bold py-2 rounded-lg shadow-sm hover:bg-emerald-700">Guardar</button>
                         </div>
                       </div>
                     ) : (
@@ -150,8 +153,8 @@ export default function ExpedienteLateral({
                                 <span className="text-blue-600 font-bold uppercase">{p.incidencia_detectada}</span>
                               ) : (p.entrada === "—" && !p.es_feriado) ? (
                                 <span className="text-rose-600 font-bold uppercase">Ausencia</span>
-                              ) : p.minutos_tardanza > 0 ? (
-                                <span className="text-orange-600 font-bold">Tardanza ({p.minutos_tardanza}m)</span>
+                              ) : p.minutos_penalizados > 0 ? (
+                                <span className="text-orange-600 font-bold">Incumplimiento ({p.minutos_penalizados}m)</span>
                               ) : (
                                 <span className="text-emerald-600 font-bold italic">Correcto</span>
                               )}
@@ -159,7 +162,7 @@ export default function ExpedienteLateral({
                           </div>
                           
                           {/* ACCIÓN RÁPIDA */}
-                          {(p.error_reloj || p.minutos_tardanza > 0 || p.entrada === "—") && (
+                          {(p.error_reloj || p.minutos_penalizados > 0 || p.entrada === "—") && (
                             <button onClick={() => iniciarEdicionPanel(p)} className="bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 p-1.5 rounded-lg transition-all border border-transparent hover:border-emerald-100">
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
