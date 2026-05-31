@@ -684,14 +684,11 @@ export interface Empleado {
 { id_reloj: "12", fecha: "2026-04-29", turno: "08:00-16:00", entrada: "08:17", salida: "16:21", tipo_incidencia: "Tardanza", retraso_minutos: 17, error_reloj: false },
 { id_reloj: "12", fecha: "2026-04-30", turno: "08:00-16:00", entrada: "08:21", salida: "16:08", tipo_incidencia: "Tardanza", retraso_minutos: 21, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-01", turno: "08:00-16:00", entrada: "08:26", salida: "16:09", tipo_incidencia: "Tardanza", retraso_minutos: 26, error_reloj: false },
-{ id_reloj: "12", fecha: "2026-05-02", tipo_incidencia: "Normal", error_reloj: false }, // Día Libre Autorizado
 { id_reloj: "12", fecha: "2026-05-03", turno: "08:00-16:00", entrada: "08:52", salida: "16:28", tipo_incidencia: "Tardanza", retraso_minutos: 52, error_reloj: false },
-{ id_reloj: "12", fecha: "2026-05-04", turno: "08:00-16:00", tipo_incidencia: "Ausencia", error_reloj: false }, // No asistió
 { id_reloj: "12", fecha: "2026-05-05", turno: "08:00-16:00", entrada: "08:13", salida: "16:14", tipo_incidencia: "Tardanza", retraso_minutos: 13, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-06", turno: "08:00-16:00", entrada: "08:32", salida: "16:09", tipo_incidencia: "Tardanza", retraso_minutos: 32, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-07", turno: "08:00-16:00", entrada: "08:20", salida: "16:00", tipo_incidencia: "Tardanza", retraso_minutos: 20, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-08", turno: "08:00-16:00", entrada: "08:22", salida: "16:02", tipo_incidencia: "Tardanza", retraso_minutos: 22, error_reloj: false },
-{ id_reloj: "12", fecha: "2026-05-09", tipo_incidencia: "Normal", error_reloj: false }, // Día Libre Autorizado
 { id_reloj: "12", fecha: "2026-05-10", turno: "08:00-16:00", entrada: "08:41", salida: "15:59", tipo_incidencia: "Tardanza", retraso_minutos: 41, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-11", turno: "08:00-16:00", entrada: "08:23", salida: "16:17", tipo_incidencia: "Tardanza", retraso_minutos: 23, error_reloj: false },
 { id_reloj: "12", fecha: "2026-05-12", turno: "08:00-16:00", entrada: "08:37", salida: "16:08", tipo_incidencia: "Tardanza", retraso_minutos: 37, error_reloj: false },

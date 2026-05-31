@@ -1,19 +1,22 @@
 "use client";
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Empleado, AsistenciaRecord, EMPLEADOS_INICIALES, ASISTENCIA_INICIAL, CONFIG_SISTEMA } from "@/data/mockData";
+import { 
+  Empleado, 
+  AsistenciaRecord, 
+  EMPLEADOS_INICIALES, 
+  ASISTENCIA_INICIAL, 
+  CONFIG_SISTEMA 
+} from "@/data/mockData";
 
+// --- INTERFACES ---
 export interface Incidencia {
   id_incidencia: string;
   id_reloj: string;
-  tipo: "Permiso" | "Licencia médica" | "Maternidad" | "Cuentas por Cobrar (CXC)" | "Vales / Faltantes de caja";
+  tipo: string;
   fecha_inicio: string;
   fecha_fin: string;
-  horas_permiso?: number; 
-  monto?: number;
-  cuotas?: number;
-  tiene_cobertura?: boolean;
-  id_reloj_cubre?: string;
   observaciones: string;
+  id_reloj_cubre?: string;
   fecha_registro: string;
 }
 
@@ -21,114 +24,118 @@ interface PayContextType {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   empleados: Empleado[];
-  updateEmpleado: (id_reloj: string, updatedData: Partial<Empleado>) => void;
-  addEmpleado: (nuevo: Empleado) => void;
   asistencia: AsistenciaRecord[];
-  corregirPoncheIndividual: (id_registro: string, horaSalidaFijada: string) => void;
-  corregirTodosErroresMasivo: () => void;
   incidencias: Incidencia[];
-  addIncidencia: (nueva: Incidencia) => void;
-  eliminarIncidencia: (id: string) => void;
+  // Configuración de Nómina
+  configTasas: { diaTrabajo: number; hora: number; he: number; feriado: number };
+  feriados: any[];
+  // Métodos de Asistencia
+  corregirPoncheIndividual: (id_registro: string, entrada: string, salida: string) => void;
+  corregirTodosErroresMasivo: () => void;
+  actualizarConfigTasas: (nuevasTasas: any) => void;
+  // Otros
   fechaSistema: string;
   periodoInicio: string;
   periodoFin: string;
-  nominaAprobada: boolean;
-  setNominaAprobada: (aprobada: boolean) => void;
-  bhdArchivoTexto: string;
-  setBhdArchivoTexto: (texto: string) => void;
 }
 
 const PayContext = createContext<PayContextType | undefined>(undefined);
 
-const INCIDENCIAS_INICIALES: Incidencia[] = [
-  {
-    id_incidencia: "INC-01",
-    id_reloj: "T1040",
-    tipo: "Permiso",
-    fecha_inicio: "2026-05-16",
-    fecha_fin: "2026-05-16",
-    horas_permiso: 3, 
-    observaciones: "CITA MÉDICA EN EL HOMS POR LA MAÑANA",
-    fecha_registro: "2026-05-14"
-  }
-];
-
 export function PayContextProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
-  const [empleados, setEmpleados] = useState<Empleado[]>(EMPLEADOS_INICIALES);
-  const [asistencia, setAsistencia] = useState<AsistenciaRecord[]>(ASISTENCIA_INICIAL);
+  const [empleados] = useState<Empleado[]>(EMPLEADOS_INICIALES);
   
-  // --- CORE FIX: ESTADO PERSISTENTE LOCAL ---
-  const [incidencias, setIncidenciasState] = useState<Incidencia[]>([]);
+  // --- PERSISTENCIA LOCAL PARA ASISTENCIA ---
+  const [asistencia, setAsistencia] = useState<AsistenciaRecord[]>([]);
+  const [incidencias] = useState<Incidencia[]>([]); // Aquí conectarías tus incidencias reales
+  
+  // --- CONFIGURACIÓN DE TASAS (Sincronizada con PonchesView) ---
+  const [configTasas, setConfigTasas] = useState({
+    diaTrabajo: 1153.57,
+    hora: 144.20,
+    he: 194.67,
+    feriado: 288.40
+  });
 
-  // Cargar datos al arrancar
+  const [feriados] = useState([
+    { id: 1, fecha: "2026-05-04", nombre: "Día del Trabajo", confirmado: true },
+    { id: 2, fecha: "2026-06-04", nombre: "Día de Corpus Christi", confirmado: true },
+  ]);
+
+  // Cargar datos al arrancar para que las correcciones no se pierdan al recargar
   useEffect(() => {
-    const backup = localStorage.getItem("taniapay_local_incidencias");
-    if (backup) {
-      setIncidenciasState(JSON.parse(backup));
+    const localAsistencia = localStorage.getItem("taniapay_asistencia");
+    if (localAsistencia) {
+      setAsistencia(JSON.parse(localAsistencia));
     } else {
-      setIncidenciasState(INCIDENCIAS_INICIALES);
+      setAsistencia(ASISTENCIA_INICIAL);
     }
   }, []);
 
-  const [nominaAprobada, setNominaAprobada] = useState<boolean>(false);
-  const [bhdArchivoTexto, setBhdArchivoTexto] = useState<string>("");
+  // --- MÉTODOS DE ASISTENCIA (Lógica de Negocio) ---
 
-  const updateEmpleado = (id_reloj: string, updatedData: Partial<Empleado>) => {
-    setEmpleados((prev) => prev.map((emp) => (emp.id_reloj === id_reloj ? { ...emp, ...updatedData } : emp)));
-  };
-
-  const addEmpleado = (nuevo: Empleado) => {
-    setEmpleados((prev) => [...prev, nuevo]);
-  };
-
-  const corregirPoncheIndividual = (id_registro: string, horaSalidaFijada: string) => {
-    setAsistencia((prev) =>
-      prev.map((rec) =>
+  const corregirPoncheIndividual = (id_registro: string, hEntrada: string, hSalida: string) => {
+    setAsistencia((prev) => {
+      const actualizadas = prev.map((rec) =>
         rec.id_registro === id_registro
-          ? { ...rec, hora_salida: horaSalidaFijada, error_reloj: false, tipo_incidencia: "Normal" }
+          ? { 
+              ...rec, 
+              hora_entrada: hEntrada, 
+              hora_salida: hSalida, 
+              error_reloj: false, 
+              tipo_incidencia: "Normal" 
+            }
           : rec
-      )
-    );
-  };
-
-  const corregirTodosErroresMasivo = () => {
-    setAsistencia((prev) =>
-      prev.map((rec) =>
-        rec.error_reloj 
-          ? { ...rec, hora_salida: "17:00:00", error_reloj: false, tipo_incidencia: "Normal" }
-          : rec
-      )
-    );
-  };
-
-  // Enlazamos funciones con localStorage para que no mueran al refrescar Next.js
-  const addIncidencia = (nueva: Incidencia) => {
-    setIncidenciasState((prev) => {
-      const actualizadas = [nueva, ...prev];
-      localStorage.setItem("taniapay_local_incidencias", JSON.stringify(actualizadas));
+      );
+      localStorage.setItem("taniapay_asistencia", JSON.stringify(actualizadas));
       return actualizadas;
     });
   };
 
-  const eliminarIncidencia = (id: string) => {
-    setIncidenciasState((prev) => {
-      const filtradas = prev.filter(i => i.id_incidencia !== id);
-      localStorage.setItem("taniapay_local_incidencias", JSON.stringify(filtradas));
-      return filtradas;
+  const corregirTodosErroresMasivo = () => {
+    setAsistencia((prev) => {
+      const actualizadas = prev.map((rec) => {
+        if (rec.error_reloj) {
+          // Buscamos el horario del empleado para no poner 17:00 a todos por igual
+          const emp = empleados.find(e => e.id_reloj === rec.id_reloj);
+          let hEntrada = rec.hora_entrada && rec.hora_entrada !== "—" ? rec.hora_entrada : "08:00:00";
+          let hSalida = rec.hora_salida && rec.hora_salida !== "—" ? rec.hora_salida : "17:00:00";
+
+          // Si el turno está definido en el registro, lo usamos
+          if (rec.turno && rec.turno.includes("-")) {
+            const [tE, tS] = rec.turno.split("-");
+            if (rec.hora_entrada === "—") hEntrada = tE + ":00";
+            if (rec.hora_salida === "—") hSalida = tS + ":00";
+          }
+
+          return { 
+            ...rec, 
+            hora_entrada: hEntrada,
+            hora_salida: hSalida, 
+            error_reloj: false, 
+            tipo_incidencia: "Normal" 
+          };
+        }
+        return rec;
+      });
+      localStorage.setItem("taniapay_asistencia", JSON.stringify(actualizadas));
+      return actualizadas;
     });
+  };
+
+  const actualizarConfigTasas = (nuevasTasas: any) => {
+    setConfigTasas(nuevasTasas);
+    // Podrías persistir esto también en localStorage si lo deseas
   };
 
   return (
     <PayContext.Provider value={{ 
-      activeTab, setActiveTab, empleados, updateEmpleado, addEmpleado,
-      asistencia, corregirPoncheIndividual, corregirTodosErroresMasivo,
-      incidencias, addIncidencia, eliminarIncidencia,
+      activeTab, setActiveTab, empleados, asistencia, incidencias,
+      configTasas, feriados,
+      corregirPoncheIndividual, corregirTodosErroresMasivo, actualizarConfigTasas,
       fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
       periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
       periodoFin: CONFIG_SISTEMA.QUINCENA_FIN,
-      nominaAprobada, setNominaAprobada,
-      bhdArchivoTexto, setBhdArchivoTexto
     }}>
       {children}
     </PayContext.Provider>
