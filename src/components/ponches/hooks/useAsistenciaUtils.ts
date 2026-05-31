@@ -41,60 +41,70 @@ export const getAlertaEstilo = (alerta: string): string => {
 };
 
 export function formatNombreTurno(turnoString: string, horaEntrada: string): string {
-  if (turnoString) {
-    const tClean = turnoString.toLowerCase();
-    if (tClean.includes("matutino") || tClean.includes("08:00") || tClean.includes("07:30")) return "Matutino";
-    if (tClean.includes("vespertino") || tClean.includes("14:30") || tClean.includes("15:00")) return "Vespertino";
+    if (turnoString) {
+      const tClean = turnoString.toLowerCase();
+      if (tClean.includes("matutino") || tClean.includes("08:00") || tClean.includes("07:30")) return "Matutino";
+      if (tClean.includes("vespertino") || tClean.includes("14:30") || tClean.includes("15:00")) return "Vespertino";
+    }
+    if (!horaEntrada || horaEntrada === "—") return "Matutino";
+    const [h] = horaEntrada.split(":").map(Number);
+    return h >= 13 ? "Vespertino" : "Matutino";
   }
-  if (!horaEntrada || horaEntrada === "—") return "Matutino";
-  const [h] = horaEntrada.split(":").map(Number);
-  return h >= 13 ? "Vespertino" : "Matutino";
-}
 
 /**
- * REGLA DE NEGOCIO ACTUALIZADA:
- * 1. Feriado laborado = Pago proporcional al tiempo trabajado (pago doble del tiempo laborado).
- * 2. Día Libre = 0.
- * 3. Ausencia = Descuento día completo (monto negativo).
- * 4. Tardanza = Descuento por minuto (monto negativo).
+ * REGLAS DE NEGOCIO "TANIA PAY" 2026:
+ * 1. Margen de Gracia: 10 mins (entrada y salida).
+ * 2. Horario Estricto: Llegar temprano no compensa irse antes de la hora.
+ * 3. Feriado: Pago proporcional al tiempo real laborado.
  */
 export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Empleado | undefined, tasas: any) => {
   if (!emp || emp.exento_ponche) return 0;
   
   const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
 
-  // 1. INCIDENCIAS (Inmune)
   if (record.incidencia_detectada) return 0;
 
-  // 2. FERIADOS (Pago proporcional al tiempo laborado)
+  const parseMins = (h: string) => {
+    if (!h || h === "—") return 0;
+    const [hrs, mins] = h.split(":").map(Number);
+    return hrs * 60 + mins;
+  };
+
+  const tEntradaReal = parseMins(record.entrada_normalizada || "");
+  const tSalidaReal = parseMins(record.salida_normalizada || "");
+  const tEntradaTeo = parseMins(emp.hora_inicio_turno || "08:00");
+  const tSalidaTeo = parseMins(emp.hora_fin_turno || "17:00");
+
+  // 1. FERIADOS (Pago proporcional al tiempo real laborado)
   if (record.es_feriado && tienePonche) {
-    const parseMins = (h: string) => {
-      const [hrs, mins] = h.split(":").map(Number);
-      return hrs * 60 + mins;
-    };
-
-    const entReal = parseMins(record.entrada_normalizada || "00:00");
-    const salReal = parseMins(record.salida_normalizada || "00:00");
-    
-    // Calculamos el tiempo real en minutos
-    const minutosTrabajados = salReal - entReal;
-    const horasTrabajadas = minutosTrabajados / 60;
-
-    // Se paga el tiempo trabajado como incentivo adicional (pago doble proporcional)
-    // Se utiliza tasas.hora (que ya representa el valor de una hora de trabajo)
-    return horasTrabajadas > 0 ? horasTrabajadas * tasas.hora : 0;
+    const minutosTrabajados = tSalidaReal - tEntradaReal;
+    return (minutosTrabajados / 60) * tasas.hora;
   }
 
-  // 3. DÍAS LIBRES Y AUSENCIAS (Si es feriado y NO trabajó, se queda en 0)
+  // 2. AUSENCIAS
   if (!tienePonche) {
     if (record.es_dia_libre || record.es_feriado) return 0;
     return -tasas.diaTrabajo; 
   }
 
-  // 4. TARDANZAS (Independiente de la salida)
-  if (record.minutos_tardanza && record.minutos_tardanza > 0) {
-    const deduccion = record.minutos_tardanza * (tasas.hora / 60);
-    return -deduccion;
+  // 3. LÓGICA DE INCUMPLIMIENTO DE JORNADA
+  let minutosPenalizados = 0;
+
+  // A) Tardanza en Entrada (Margen 10 min)
+  if (tEntradaReal > tEntradaTeo + 10) {
+    minutosPenalizados += (tEntradaReal - tEntradaTeo);
+  }
+
+  // B) Salida Anticipada (Margen 10 min)
+  // Si sale antes de (Hora Teórica - 10), se penaliza el tiempo faltante completo
+  if (tSalidaReal < tSalidaTeo - 10) {
+    minutosPenalizados += (tSalidaTeo - tSalidaReal);
+  }
+
+  // C) Bloqueo de Compensación: No hay restas si tEntradaReal < tEntradaTeo
+
+  if (minutosPenalizados > 0) {
+    return -(minutosPenalizados * (tasas.hora / 60));
   }
 
   return 0;
@@ -112,8 +122,18 @@ export const obtenerAlertaSimplificada = (record: AsistenciaRefinada, emp: Emple
     return "Ausencia";
   }
 
+  // Detección de incumplimiento para alerta visual
+  const parseMins = (h: string) => h ? h.split(":").map(Number)[0] * 60 + h.split(":").map(Number)[1] : 0;
+  const tSalidaReal = parseMins(record.salida_normalizada || "");
+  const tSalidaTeo = parseMins(emp.hora_fin_turno || "17:00");
+
   if (record.requiereConfirmacionHE && !record.he_aprobada) return "HE por Aprobar";
-  if (record.minutos_tardanza && record.minutos_tardanza > 0 && !emp.exento_ponche) return "Tardanza";
+  
+  // Se activa "Tardanza" si llegó tarde O si salió temprano
+  const salidaTemprana = tSalidaReal < tSalidaTeo - 10;
+  if ((record.minutos_tardanza && record.minutos_tardanza > 0) || salidaTemprana) {
+    if (!emp.exento_ponche) return "Tardanza";
+  }
   
   return "Correcto";
 };
