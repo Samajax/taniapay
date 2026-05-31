@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { Edit3, CheckCircle, X, Star, AlertCircle, Check } from "lucide-react";
+import { Edit3, X, Check, AlertCircle } from "lucide-react";
 import { 
   formatNombreTurno, 
   formatMonto, 
@@ -15,7 +15,7 @@ interface Props {
   tasas: any;
   selectedIdReloj: string;
   setSelectedIdReloj: (id: string) => void;
-  editandoRegistroId: string | null;
+  editandoRegistroId: string | null; // Guardará "id_reloj-fecha"
   nuevaEntrada: string;
   nuevaSalida: string;
   setNuevaEntrada: (v: string) => void;
@@ -52,37 +52,36 @@ export default function HistorialPonchesTable({
           const emp = empleados.find((e) => e.id_reloj === rec.id_reloj);
           const montoCalculado = calcularDescuentoPonche(rec, emp, tasas);
           const alerta = obtenerAlertaSimplificada(rec, emp);
-          const estaEditando = editandoRegistroId === rec.id_registro;
-          const tienePonche = rec.entrada_normalizada !== "—" && rec.entrada_normalizada !== "";
           
-          // Validación de conflicto HE vs Tardanza
+          // Generamos una llave única garantizada para esta fila combinando ID y Fecha
+          const filaIdentificadorUnico = `${rec.id_reloj}-${rec.fecha}`;
+          
+          // REGLA CRÍTICA: Solo esta fila se activará si el ID de edición coincide perfectamente
+          const estaEditando = editandoRegistroId !== null && editandoRegistroId === filaIdentificadorUnico;
+          
           const heBloqueada = rec.requiereConfirmacionHE && !rec.he_aprobada;
 
           return (
             <tr 
-              key={rec.id_registro} 
+              key={filaIdentificadorUnico} 
               className={`group transition-all hover:bg-slate-50/50 ${selectedIdReloj === rec.id_reloj ? "bg-emerald-50/20" : ""}`}
             >
-              {/* FECHA Y CONTROL FERIADO */}
               <td className="p-3 pl-6 font-mono text-slate-600 border-b border-transparent group-hover:border-slate-100" onClick={() => setSelectedIdReloj(rec.id_reloj)}>
                 {rec.es_feriado && <span className="bg-blue-600 text-white px-1.5 py-0.5 rounded text-[8px] font-bold mr-1.5 shadow-sm">FERIADO</span>}
                 {rec.fecha}
               </td>
 
-              {/* COLABORADOR */}
               <td className="p-3 border-b border-transparent group-hover:border-slate-100" onClick={() => setSelectedIdReloj(rec.id_reloj)}>
                 <div className="font-bold uppercase text-slate-800 cursor-pointer">{emp?.nombre || "N/A"}</div>
                 <div className="text-[10px] text-slate-400 font-mono">ID Reloj: {rec.id_reloj}</div>
               </td>
 
-              {/* TURNO */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-slate-100 text-slate-500 uppercase">
                   {formatNombreTurno(rec.turno, rec.entrada_normalizada)}
                 </span>
               </td>
 
-              {/* SUCURSAL */}
               <td className="p-3 uppercase text-[10px] font-medium text-slate-400 border-b border-transparent group-hover:border-slate-100">
                 {rec.sucursal_ponche}
               </td>
@@ -90,7 +89,12 @@ export default function HistorialPonchesTable({
               {/* ENTRADA EDITABLE */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {estaEditando ? (
-                  <input type="time" value={nuevaEntrada} onChange={(e) => setNuevaEntrada(e.target.value)} className="w-24 px-2 py-1 border border-emerald-400 rounded-lg text-center text-xs font-mono bg-white focus:outline-none shadow-sm" />
+                  <input 
+                    type="time" 
+                    value={nuevaEntrada} 
+                    onChange={(e) => setNuevaEntrada(e.target.value)} 
+                    className="w-24 px-2 py-1 border border-emerald-400 rounded-lg text-center text-xs font-mono bg-white focus:outline-none shadow-md ring-2 ring-emerald-500/20" 
+                  />
                 ) : (
                   <span className={`font-mono font-bold ${rec.minutos_tardanza > 0 ? "text-orange-500" : "text-slate-700"}`}>
                     {rec.entrada_normalizada}
@@ -101,7 +105,12 @@ export default function HistorialPonchesTable({
               {/* SALIDA EDITABLE */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {estaEditando ? (
-                  <input type="time" value={nuevaSalida} onChange={(e) => setNuevaSalida(e.target.value)} className="w-24 px-2 py-1 border border-emerald-400 rounded-lg text-center text-xs font-mono bg-white focus:outline-none shadow-sm" />
+                  <input 
+                    type="time" 
+                    value={nuevaSalida} 
+                    onChange={(e) => setNuevaSalida(e.target.value)} 
+                    className="w-24 px-2 py-1 border border-emerald-400 rounded-lg text-center text-xs font-mono bg-white focus:outline-none shadow-md ring-2 ring-emerald-500/20" 
+                  />
                 ) : (
                   <span className={`font-mono font-bold ${rec.minutos_extras > 0 ? "text-emerald-600" : "text-slate-700"}`}>
                     {rec.salida_normalizada}
@@ -109,7 +118,6 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              {/* CÓDIGO DE COLORES MAESTRO (RESUMEN VISUAL) */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {rec.es_dia_libre ? (
                   <span className="text-slate-500 font-bold bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-lg uppercase text-[9px]">
@@ -124,7 +132,6 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              {/* HORAS EXTRAS VALIDACIÓN CRUZADA */}
               <td className="p-3 text-center border-b border-transparent group-hover:border-slate-100">
                 {heBloqueada ? (
                   <div className="flex flex-col items-center gap-1">
@@ -133,7 +140,10 @@ export default function HistorialPonchesTable({
                     </span>
                     {aprobarHE && (
                       <button 
-                        onClick={() => aprobarHE(rec.id_registro)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          aprobarHE(rec.id_registro || filaIdentificadorUnico);
+                        }}
                         className="text-[9px] text-emerald-600 font-bold hover:underline uppercase tracking-tighter"
                       >
                         Autorizar Pago
@@ -149,7 +159,6 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              {/* RETENCIÓN O INCENTIVO NETO */}
               <td className="p-3 text-right font-mono font-bold border-b border-transparent group-hover:border-slate-100 pr-6">
                 {montoCalculado < 0 ? (
                   <span className="text-rose-600">-{formatMonto(Math.abs(montoCalculado))}</span>
@@ -160,15 +169,27 @@ export default function HistorialPonchesTable({
                 )}
               </td>
               
-              {/* ACCIÓN ACCESIBLE */}
               <td className="p-3 pr-6 text-center border-b border-transparent group-hover:border-slate-100">
                 {estaEditando ? (
                   <div className="flex items-center gap-1.5 justify-center">
-                    <button onClick={() => guardarEdicion(rec.id_registro)} className="text-white p-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-md transition-all"><Check className="w-4 h-4" /></button>
-                    <button onClick={cancelarEdicion} className="text-white p-1.5 bg-rose-500 hover:bg-rose-600 rounded-lg shadow-md transition-all"><X className="w-4 h-4" /></button>
+                    <button 
+                      onClick={() => guardarEdicion(rec.id_registro || filaIdentificadorUnico)} 
+                      className="text-white p-1.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg shadow-md transition-all"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={cancelarEdicion} 
+                      className="text-white p-1.5 bg-rose-500 hover:bg-rose-600 rounded-lg shadow-md transition-all"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ) : (
-                  <button onClick={() => iniciarEdicion(rec)} className="text-slate-400 hover:text-emerald-600 p-2 rounded-xl hover:bg-slate-100 transition-all flex items-center gap-1.5 mx-auto font-bold">
+                  <button 
+                    onClick={() => iniciarEdicion(rec)} 
+                    className="text-slate-400 hover:text-emerald-600 p-2 rounded-xl hover:bg-slate-100 transition-all flex items-center gap-1.5 mx-auto font-bold"
+                  >
                     <Edit3 className="w-3.5 h-3.5" /> <span className="text-[10px] uppercase">Corregir</span>
                   </button>
                 )}

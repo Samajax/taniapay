@@ -8,7 +8,6 @@ import {
   CONFIG_SISTEMA 
 } from "@/data/mockData";
 
-// --- INTERFACES ---
 export interface Incidencia {
   id_incidencia: string;
   id_reloj: string;
@@ -26,14 +25,12 @@ interface PayContextType {
   empleados: Empleado[];
   asistencia: AsistenciaRecord[];
   incidencias: Incidencia[];
-  // Configuración de Nómina
   configTasas: { diaTrabajo: number; hora: number; he: number; feriado: number };
   feriados: any[];
-  // Métodos de Asistencia
-  corregirPoncheIndividual: (id_registro: string, entrada: string, salida: string) => void;
+  corregirPoncheIndividual: (id_compuesto: string, entrada: string, salida: string) => void;
   corregirTodosErroresMasivo: () => void;
+  aprobarHorasExtras: (id_compuesto: string) => void;
   actualizarConfigTasas: (nuevasTasas: any) => void;
-  // Otros
   fechaSistema: string;
   periodoInicio: string;
   periodoFin: string;
@@ -44,25 +41,16 @@ const PayContext = createContext<PayContextType | undefined>(undefined);
 export function PayContextProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
   const [empleados] = useState<Empleado[]>(EMPLEADOS_INICIALES);
-  
-  // --- PERSISTENCIA LOCAL PARA ASISTENCIA ---
   const [asistencia, setAsistencia] = useState<AsistenciaRecord[]>([]);
-  const [incidencias] = useState<Incidencia[]>([]); // Aquí conectarías tus incidencias reales
-  
-  // --- CONFIGURACIÓN DE TASAS (Sincronizada con PonchesView) ---
-  const [configTasas, setConfigTasas] = useState({
+  const [incidencias] = useState<Incidencia[]>([]);
+
+  const [configTasas] = useState({
     diaTrabajo: 1153.57,
     hora: 144.20,
     he: 194.67,
-    feriado: 288.40
+    feriado: 1153.57
   });
 
-  const [feriados] = useState([
-    { id: 1, fecha: "2026-05-04", nombre: "Día del Trabajo", confirmado: true },
-    { id: 2, fecha: "2026-06-04", nombre: "Día de Corpus Christi", confirmado: true },
-  ]);
-
-  // Cargar datos al arrancar para que las correcciones no se pierdan al recargar
   useEffect(() => {
     const localAsistencia = localStorage.getItem("taniapay_asistencia");
     if (localAsistencia) {
@@ -72,67 +60,65 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  // --- MÉTODOS DE ASISTENCIA (Lógica de Negocio) ---
+  const saveAndSetAsistencia = (data: AsistenciaRecord[]) => {
+    localStorage.setItem("taniapay_asistencia", JSON.stringify(data));
+    setAsistencia(data);
+  };
 
-  const corregirPoncheIndividual = (id_registro: string, hEntrada: string, hSalida: string) => {
-    setAsistencia((prev) => {
-      const actualizadas = prev.map((rec) =>
-        rec.id_registro === id_registro
-          ? { 
-              ...rec, 
-              hora_entrada: hEntrada, 
-              hora_salida: hSalida, 
-              error_reloj: false, 
-              tipo_incidencia: "Normal" 
-            }
-          : rec
-      );
-      localStorage.setItem("taniapay_asistencia", JSON.stringify(actualizadas));
-      return actualizadas;
+  // --- CORRECCIÓN POR ID COMPUESTO (id_reloj-fecha) ---
+  const corregirPoncheIndividual = (id_compuesto: string, hEntrada: string, hSalida: string) => {
+    const actualizadas = asistencia.map((rec) => {
+      // Creamos la llave de comparación para cada registro
+      const currentId = `${rec.id_reloj}-${rec.fecha}`;
+      
+      if (currentId === id_compuesto) {
+        return { 
+          ...rec, 
+          entrada: hEntrada, 
+          salida: hSalida, 
+          error_reloj: false, 
+          tipo_incidencia: "Normal" 
+        };
+      }
+      return rec;
     });
+    saveAndSetAsistencia(actualizadas);
+  };
+
+  // --- APROBACIÓN POR ID COMPUESTO ---
+  const aprobarHorasExtras = (id_compuesto: string) => {
+    const actualizadas = asistencia.map((rec) => {
+      const currentId = `${rec.id_reloj}-${rec.fecha}`;
+      return currentId === id_compuesto ? { ...rec, he_aprobada: true } : rec;
+    });
+    saveAndSetAsistencia(actualizadas);
   };
 
   const corregirTodosErroresMasivo = () => {
-    setAsistencia((prev) => {
-      const actualizadas = prev.map((rec) => {
-        if (rec.error_reloj) {
-          // Buscamos el horario del empleado para no poner 17:00 a todos por igual
-          const emp = empleados.find(e => e.id_reloj === rec.id_reloj);
-          let hEntrada = rec.hora_entrada && rec.hora_entrada !== "—" ? rec.hora_entrada : "08:00:00";
-          let hSalida = rec.hora_salida && rec.hora_salida !== "—" ? rec.hora_salida : "17:00:00";
+    const actualizadas = asistencia.map((rec) => {
+      if (rec.error_reloj) {
+        let hEntrada = rec.entrada && rec.entrada !== "—" ? rec.entrada : "08:00";
+        let hSalida = rec.salida && rec.salida !== "—" ? rec.salida : "17:00";
 
-          // Si el turno está definido en el registro, lo usamos
-          if (rec.turno && rec.turno.includes("-")) {
-            const [tE, tS] = rec.turno.split("-");
-            if (rec.hora_entrada === "—") hEntrada = tE + ":00";
-            if (rec.hora_salida === "—") hSalida = tS + ":00";
-          }
-
-          return { 
-            ...rec, 
-            hora_entrada: hEntrada,
-            hora_salida: hSalida, 
-            error_reloj: false, 
-            tipo_incidencia: "Normal" 
-          };
+        if (rec.turno && rec.turno.includes("-")) {
+          const [tE, tS] = rec.turno.split("-");
+          if (rec.entrada === "—") hEntrada = tE;
+          if (rec.salida === "—") hSalida = tS;
         }
-        return rec;
-      });
-      localStorage.setItem("taniapay_asistencia", JSON.stringify(actualizadas));
-      return actualizadas;
-    });
-  };
 
-  const actualizarConfigTasas = (nuevasTasas: any) => {
-    setConfigTasas(nuevasTasas);
-    // Podrías persistir esto también en localStorage si lo deseas
+        return { ...rec, entrada: hEntrada, salida: hSalida, error_reloj: false };
+      }
+      return rec;
+    });
+    saveAndSetAsistencia(actualizadas);
   };
 
   return (
     <PayContext.Provider value={{ 
       activeTab, setActiveTab, empleados, asistencia, incidencias,
-      configTasas, feriados,
-      corregirPoncheIndividual, corregirTodosErroresMasivo, actualizarConfigTasas,
+      configTasas, feriados: [], 
+      corregirPoncheIndividual, corregirTodosErroresMasivo, aprobarHorasExtras,
+      actualizarConfigTasas: () => {},
       fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
       periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
       periodoFin: CONFIG_SISTEMA.QUINCENA_FIN,
@@ -142,8 +128,8 @@ export function PayContextProvider({ children }: { children: React.ReactNode }) 
   );
 }
 
-export function usePay() {
+export const usePay = () => {
   const context = useContext(PayContext);
   if (!context) throw new Error("usePay debe usarse dentro de un PayContextProvider");
   return context;
-}
+};

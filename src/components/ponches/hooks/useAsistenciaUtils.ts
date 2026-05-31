@@ -53,7 +53,7 @@ export function formatNombreTurno(turnoString: string, horaEntrada: string): str
 
 /**
  * REGLA DE NEGOCIO ACTUALIZADA:
- * 1. Feriado laborado = Pago doble (monto positivo).
+ * 1. Feriado laborado = Pago proporcional al tiempo trabajado (pago doble del tiempo laborado).
  * 2. Día Libre = 0.
  * 3. Ausencia = Descuento día completo (monto negativo).
  * 4. Tardanza = Descuento por minuto (monto negativo).
@@ -66,15 +66,29 @@ export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Emplead
   // 1. INCIDENCIAS (Inmune)
   if (record.incidencia_detectada) return 0;
 
-  // 2. FERIADOS (Si trabajó, se paga el día al doble; ya tiene su sueldo base, sumamos 1 día extra)
-  if (record.es_feriado) {
-    return tienePonche ? tasas.diaTrabajo : 0;
+  // 2. FERIADOS (Pago proporcional al tiempo laborado)
+  if (record.es_feriado && tienePonche) {
+    const parseMins = (h: string) => {
+      const [hrs, mins] = h.split(":").map(Number);
+      return hrs * 60 + mins;
+    };
+
+    const entReal = parseMins(record.entrada_normalizada || "00:00");
+    const salReal = parseMins(record.salida_normalizada || "00:00");
+    
+    // Calculamos el tiempo real en minutos
+    const minutosTrabajados = salReal - entReal;
+    const horasTrabajadas = minutosTrabajados / 60;
+
+    // Se paga el tiempo trabajado como incentivo adicional (pago doble proporcional)
+    // Se utiliza tasas.hora (que ya representa el valor de una hora de trabajo)
+    return horasTrabajadas > 0 ? horasTrabajadas * tasas.hora : 0;
   }
 
-  // 3. DÍAS LIBRES Y AUSENCIAS
+  // 3. DÍAS LIBRES Y AUSENCIAS (Si es feriado y NO trabajó, se queda en 0)
   if (!tienePonche) {
-    if (record.es_dia_libre) return 0; // Día libre legal = RD$ 0.00
-    return -tasas.diaTrabajo; // Falta injustificada = -1 día
+    if (record.es_dia_libre || record.es_feriado) return 0;
+    return -tasas.diaTrabajo; 
   }
 
   // 4. TARDANZAS (Independiente de la salida)
@@ -86,13 +100,6 @@ export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Emplead
   return 0;
 };
 
-/**
- * RESUMEN VISUAL SIMPLIFICADO:
- * Rojo: Ausencia o Error.
- * Naranja: Tardanza o HE por Aprobar.
- * Gris: Día Libre o Feriado (sin laborar).
- * Verde: Correcto.
- */
 export const obtenerAlertaSimplificada = (record: AsistenciaRefinada, emp: Empleado | undefined) => {
   if (!emp) return "";
   if (record.incidencia_detectada) return record.incidencia_detectada;

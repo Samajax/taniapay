@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import { usePay } from "@/context/PayContext";
 import { SUCURSALES_DISPONIBLES } from "@/data/mockData";
 import { 
-  Search, Clock, AlertTriangle, FileText, MapPin, 
-  CalendarDays, DollarSign, Edit3, X, Sparkles, UserCheck 
+  Search, Clock, AlertTriangle, FileText, 
+  DollarSign, Edit3, X, Sparkles 
 } from "lucide-react";
 
 import { 
@@ -22,7 +22,8 @@ export default function PonchesView() {
     incidencias = [], 
     corregirPoncheIndividual, 
     corregirTodosErroresMasivo,
-    aprobarHorasExtras // Función para autorizar HE en conflicto
+    aprobarHorasExtras,
+    configTasas 
   } = usePay();
   
   // --- ESTADOS DE UI ---
@@ -33,19 +34,11 @@ export default function PonchesView() {
   const [filterFecha, setFilterFecha] = useState("Todos"); 
   const [selectedIdReloj, setSelectedIdReloj] = useState<string>(""); 
 
-  // --- ESTADOS DE EDICIÓN ---
-  const [editandoRegistroId, setEditandoRegistroId] = useState<string | null>(null);
+  // --- ESTADOS DE EDICIÓN LOCAL BLINDADOS ---
+  const [editandoRegistroId, setEditandoRegistroId] = useState<string | null>(null); // Guardará `${id_reloj}-${fecha}`
   const [nuevaEntrada, setNuevaEntrada] = useState("");
   const [nuevaSalida, setNuevaSalida] = useState("");
-  const [panelWidth, setPanelWidth] = useState(450); 
-
-  // Tasas globales (Fiscal RD 2026)
-  const [tasas] = useState({ 
-    diaTrabajo: 1153.57, 
-    hora: 144.20, 
-    he: 194.67, 
-    feriado: 1153.57 // Pago extra por laborar día feriado[cite: 1]
-  });
+  const [panelWidth] = useState(450); 
 
   const [feriadosRD] = useState([
     { fecha: "2026-01-01", nombre: "Año Nuevo" },
@@ -53,7 +46,7 @@ export default function PonchesView() {
     { fecha: "2026-05-04", nombre: "Día del Trabajo" }
   ]);
 
-  // --- MOTOR DE ENRIQUECIMIENTO Y REGLAS MAESTRAS ---
+  // --- MOTOR DE ENRIQUECIMIENTO (Lógica de Negocio y Jerarquía de Reglas) ---
   const asistenciaEnriquecida: AsistenciaRefinada[] = useMemo(() => {
     const parseMins = (h: string) => {
       if (!h || h === "—" || h.trim() === "") return 0;
@@ -61,7 +54,7 @@ export default function PonchesView() {
       return hrs * 60 + mins;
     };
 
-    // 1. Clonar y ordenar para conteo secuencial de días libres[cite: 1]
+    // Ordenamiento cronológico para conteo secuencial correcto de descansos
     const registrosOrdenados = [...asistencia].sort((a, b) => a.fecha.localeCompare(b.fecha));
     const contadoresLibres: Record<string, number> = {};
 
@@ -74,14 +67,14 @@ export default function PonchesView() {
       const salida = rec.salida || "—";
       const tienePonche = entrada !== "—";
 
-      // A) Detección de Día Libre (Regra: 2 por quincena si no hay actividad)[cite: 1]
+      // Capa de Regla: Detección Automática de Día Libre (Máx 2 por quincena)
       let es_dia_libre = false;
       if (!tienePonche && !esFeriado && !coincidenciaInc) {
         contadoresLibres[rec.id_reloj] = (contadoresLibres[rec.id_reloj] || 0) + 1;
         if (contadoresLibres[rec.id_reloj] <= 2) es_dia_libre = true;
       }
 
-      // B) Cálculo de Tardanza y Horas Extras
+      // Capa de Regla: Métricas de Tiempo Real
       let tardanzaMins = 0;
       let extrasMins = 0;
       let requiereConfirmacionHE = false;
@@ -92,10 +85,11 @@ export default function PonchesView() {
         const tTeoEntrada = parseMins(emp.hora_inicio_turno || "08:00");
         const tTeoSalida = parseMins(emp.hora_fin_turno || "17:00");
 
+        // Margen de gracia de 10 minutos
         if (tEntrada > tTeoEntrada + 10) tardanzaMins = tEntrada - tTeoEntrada;
         if (tSalida > tTeoSalida) extrasMins = tSalida - tTeoSalida;
         
-        // Validación Cruzada: Bloqueo si hay tardanza previa[cite: 1]
+        // Validación Cruzada: Si hay HE y tardanza en el mismo día, entra en conflicto (Bloqueada)
         if (extrasMins > 0 && tardanzaMins > 0) requiereConfirmacionHE = true;
       }
 
@@ -114,7 +108,7 @@ export default function PonchesView() {
     });
   }, [asistencia, incidencias, empleados, feriadosRD]);
 
-  // --- FILTRADO Y AGRUPACIÓN ---
+  // --- FILTRADO DE INTERFAZ ---
   const registrosFiltrados = useMemo(() => {
     return asistenciaEnriquecida.filter((rec) => {
       const emp = empleados.find(e => e.id_reloj === rec.id_reloj);
@@ -128,6 +122,7 @@ export default function PonchesView() {
     });
   }, [asistenciaEnriquecida, subTab, search, filterSucursal, filterFecha, empleados]);
 
+  // --- AGRUPACIÓN CON REGLAS FINANCIERAS PARA REPORTES ---
   const listaGrouped = useMemo(() => {
     const mapa: Record<string, EmpleadoAsistenciaGrupal> = {};
     registrosFiltrados.forEach((rec) => {
@@ -140,25 +135,38 @@ export default function PonchesView() {
           totalDescuento: 0, alertasAcumuladas: new Set(), records: [] 
         };
       }
-      const monto = calcularDescuentoPonche(rec, emp, tasas);
+      const monto = calcularDescuentoPonche(rec, emp, configTasas);
       mapa[rec.id_reloj].totalDescuento += monto;
       mapa[rec.id_reloj].records.push(rec);
       const alerta = obtenerAlertaSimplificada(rec, emp);
       if (alerta && alerta !== "Correcto") mapa[rec.id_reloj].alertasAcumuladas.add(alerta);
     });
     return Object.values(mapa);
-  }, [registrosFiltrados, empleados, tasas]);
+  }, [registrosFiltrados, empleados, configTasas]);
 
-  // --- ACCIONES ---
+  // --- MANEJADORES DE OPERACIONES (Sincronizados por ID compuesto) ---
   const handleEdit = (rec: any) => {
-    setEditandoRegistroId(rec.id_registro);
+    // Generamos el id de control único id_reloj + fecha
+    const idUnicoFila = `${rec.id_reloj}-${rec.fecha}`;
+    setEditandoRegistroId(idUnicoFila);
+    
+    // Seteamos la data exacta en el buffer de inputs locales
     setNuevaEntrada(rec.entrada_normalizada !== "—" ? rec.entrada_normalizada : "08:00");
     setNuevaSalida(rec.salida_normalizada !== "—" ? rec.salida_normalizada : "17:00");
   };
 
-  const handleSave = (id: string) => {
-    if (corregirPoncheIndividual) corregirPoncheIndividual(id, nuevaEntrada, nuevaSalida);
-    setEditandoRegistroId(null);
+  const handleSave = (idCompuesto: string) => {
+    if (corregirPoncheIndividual) {
+      corregirPoncheIndividual(idCompuesto, nuevaEntrada, nuevaSalida);
+      setEditandoRegistroId(null);
+      setModoEdicionActivo(false);
+    }
+  };
+
+  const handleAprobarHE = (idCompuesto: string) => {
+    if (aprobarHorasExtras) {
+      aprobarHorasExtras(idCompuesto);
+    }
   };
 
   const cardClasses = "bg-white border border-slate-100 rounded-2xl shadow-sm transition-all";
@@ -167,7 +175,7 @@ export default function PonchesView() {
     <div className="flex gap-4 p-4 bg-[#F8FAFC] min-h-screen w-full font-sans">
       <div className="flex-1 flex flex-col gap-5 min-w-0">
         
-        {/* MÉTRICAS RÁPIDAS */}
+        {/* PANEL DE MÉTRICAS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div onClick={() => setSubTab("errores")} className={`${cardClasses} p-5 flex items-center justify-between cursor-pointer hover:border-red-200 ${subTab === "errores" ? "ring-2 ring-red-500/10" : ""}`}>
             <div>
@@ -185,7 +193,7 @@ export default function PonchesView() {
           </div>
           <div className="bg-slate-900 p-5 rounded-2xl shadow-lg flex items-center justify-between text-white">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Impacto en Nómina</span>
+              <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Impacto en Nómina</span>
               <span className="text-xl font-mono font-bold block text-emerald-400">
                 {formatMonto(listaGrouped.reduce((acc, curr) => acc + curr.totalDescuento, 0))}
               </span>
@@ -194,7 +202,7 @@ export default function PonchesView() {
           </div>
         </div>
 
-        {/* FILTROS */}
+        {/* CONTROLES DE FILTRADO */}
         <div className="bg-white p-3 border rounded-2xl flex flex-col sm:flex-row gap-3 items-center shadow-sm">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -206,43 +214,51 @@ export default function PonchesView() {
               {SUCURSALES_DISPONIBLES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
             <button onClick={() => setModoEdicionActivo(!modoEdicionActivo)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${modoEdicionActivo ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"}`}>
-              {modoEdicionActivo ? <><X className="w-3.5 h-3.5" /> Salir</> : <><Edit3 className="w-3.5 h-3.5" /> Editar</>}
+              {modoEdicionActivo ? <><X className="w-3.5 h-3.5" /> Cancelar</> : <><Edit3 className="w-3.5 h-3.5" /> Modo Edición</>}
             </button>
           </div>
         </div>
 
-        {/* TABS DE VISTA */}
+        {/* TABS NATIVAS */}
         <div className="flex gap-2">
-          {[{ id: "todos", label: "Historial", icon: <FileText /> }, { id: "tardanzas", label: "Alertas", icon: <AlertTriangle /> }].map(tab => (
+          {[{ id: "todos", label: "Historial de Ponches", icon: <FileText /> }, { id: "tardanzas", label: "Resumen Alertas", icon: <AlertTriangle /> }].map(tab => (
             <button key={tab.id} onClick={() => setSubTab(tab.id as any)} className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${subTab === tab.id ? "bg-slate-800 text-white shadow-md" : "bg-white text-slate-500 border"}`}>
               {React.cloneElement(tab.icon as any, { className: "w-3.5 h-3.5" })} {tab.label}
             </button>
           ))}
         </div>
 
-        {/* CONTENEDOR DE TABLAS */}
+        {/* SECCIÓN DE RENDERIZADO DE TABLAS */}
         <div className="bg-white border rounded-2xl overflow-hidden shadow-sm">
+          <div className="flex gap-2 p-3 bg-slate-50/50 border-b items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tabla Operativa</span>
+            {subTab === "errores" && (
+              <button onClick={corregirTodosErroresMasivo} className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 transition-all">
+                <Sparkles className="w-3 h-3" /> Ejecutar Saneamiento Masivo
+              </button>
+            )}
+          </div>
           {subTab === "tardanzas" ? (
             <ResumenAlertasTable listaGroupedTardanzas={listaGrouped} selectedIdReloj={selectedIdReloj} setSelectedIdReloj={setSelectedIdReloj} />
           ) : (
             <HistorialPonchesTable 
-              registros={registrosFiltrados} empleados={empleados} tasas={tasas} 
+              registros={registrosFiltrados} empleados={empleados} tasas={configTasas} 
               selectedIdReloj={selectedIdReloj} setSelectedIdReloj={setSelectedIdReloj}
               editandoRegistroId={editandoRegistroId} nuevaEntrada={nuevaEntrada} nuevaSalida={nuevaSalida}
               setNuevaEntrada={setNuevaEntrada} setNuevaSalida={setNuevaSalida}
               iniciarEdicion={handleEdit} guardarEdicion={handleSave} cancelarEdicion={() => setEditandoRegistroId(null)}
-              aprobarHE={aprobarHorasExtras}
+              aprobarHE={handleAprobarHE}
             />
           )}
         </div>
       </div>
 
-      {/* PANEL EXPEDIENTE */}
+      {/* EXPEDIENTE LATERAL */}
       <ExpedienteLateral 
         panelWidth={panelWidth} 
         empleado={empleados.find(e => e.id_reloj === selectedIdReloj)} 
         records={asistenciaEnriquecida.filter(p => p.id_reloj === selectedIdReloj)}
-        tasas={tasas} editandoPanelId={null} panelNuevaEntrada="" panelNuevaSalida=""
+        tasas={configTasas} editandoPanelId={null} panelNuevaEntrada="" panelNuevaSalida=""
         setPanelNuevaEntrada={() => {}} setPanelNuevaSalida={() => {}}
         iniciarEdicionPanel={() => {}} cancelarEdicionPanel={() => {}} guardarEdicionPanel={() => {}}
         totalDescuentoEmpleado={listaGrouped.find(g => g.id_reloj === selectedIdReloj)?.totalDescuento || 0}
