@@ -1,23 +1,27 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect } from "react";
-import { 
-  Empleado, 
-  AsistenciaRecord, 
-  EMPLEADOS_INICIALES, 
-  ASISTENCIA_INICIAL, 
-  CONFIG_SISTEMA 
-} from "@/data/mockData";
+import React, { createContext, useContext, useEffect, useState } from "react";
 
-export interface Incidencia {
-  id_incidencia: string;
-  id_reloj: string;
-  tipo: string;
-  fecha_inicio: string;
-  fecha_fin: string;
-  observaciones: string;
-  id_reloj_cubre?: string;
-  fecha_registro: string;
-}
+import {
+  EMPLEADOS_INICIALES,
+  ASISTENCIA_INICIAL,
+  TASAS_INICIALES,
+  CONFIG_SISTEMA,
+} from "@/data/mockData";
+import { fechasFeriado } from "@/data/feriados";
+import {
+  parsearArchivo,
+  type ReporteImportacion,
+} from "@/components/ponches/lib/parsearArchivo";
+import { calcularIncidencia } from "@/components/ponches/lib/calcularIncidencia";
+import type {
+  Empleado,
+  AsistenciaRecord,
+  Incidencia,
+  Tasas,
+} from "@/components/ponches/types";
+
+const STORAGE_KEY = "taniapay_asistencia";
+const FERIADOS_SET = new Set(fechasFeriado());
 
 interface PayContextType {
   activeTab: string;
@@ -25,133 +29,138 @@ interface PayContextType {
   empleados: Empleado[];
   asistencia: AsistenciaRecord[];
   incidencias: Incidencia[];
-  configTasas: { diaTrabajo: number; hora: number; he: number; feriado: number };
-  feriados: any[];
-  corregirPoncheIndividual: (id_compuesto: string, entrada: string, salida: string) => void;
-  corregirTodosErroresMasivo: () => void;
-  aprobarHorasExtras: (id_compuesto: string) => void;
-  actualizarConfigTasas: (nuevasTasas: any) => void;
-  // Nuevas funciones CRUD
-  agregarNuevoRegistroAsistencia: (id_reloj: string, fecha: string) => void;
-  eliminarRegistroAsistencia: (id_compuesto: string) => void;
-  actualizarTurnoOEstado: (id_compuesto: string, nuevoEstado: string) => void;
+  configTasas: Tasas;
   fechaSistema: string;
   periodoInicio: string;
   periodoFin: string;
+
+  /** Importa el archivo del aparato (uno por sucursal) y devuelve el reporte. */
+  importarArchivo: (texto: string, sucursal: string) => ReporteImportacion;
+  /** Corrige entrada/salida de un dia y RECALCULA su veredicto. */
+  corregirPonche: (idReloj: string, fecha: string, entrada: string | null, salida: string | null) => void;
+  /** Cambia el turno (ventana) de un dia y RECALCULA. Util para arreglar "Default". */
+  actualizarTurno: (idReloj: string, fecha: string, turno: string | null) => void;
+  /** Agrega un dia que faltaba y lo calcula. */
+  agregarRegistro: (idReloj: string, fecha: string, turno: string | null, entrada: string | null, salida: string | null) => void;
+  eliminarRegistro: (idReloj: string, fecha: string) => void;
+  actualizarTasas: (tasas: Tasas) => void;
 }
 
 const PayContext = createContext<PayContextType | undefined>(undefined);
 
 export function PayContextProvider({ children }: { children: React.ReactNode }) {
-  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [empleados] = useState<Empleado[]>(EMPLEADOS_INICIALES);
+  const [incidencias] = useState<Incidencia[]>([]); // RRHH; lo llena su modulo
+  const [configTasas, setConfigTasas] = useState<Tasas>(TASAS_INICIALES);
   const [asistencia, setAsistencia] = useState<AsistenciaRecord[]>([]);
-  const [incidencias] = useState<Incidencia[]>([]);
 
-  const [configTasas] = useState({
-    diaTrabajo: 1153.57,
-    hora: 144.20,
-    he: 194.67,
-    feriado: 1153.57
-  });
-
+  // Carga desde localStorage (solo cliente) o cae a la semilla.
   useEffect(() => {
-    const localAsistencia = localStorage.getItem("taniapay_asistencia");
-    if (localAsistencia) {
-      setAsistencia(JSON.parse(localAsistencia));
-    } else {
+    try {
+      const guardado = localStorage.getItem(STORAGE_KEY);
+      setAsistencia(guardado ? JSON.parse(guardado) : ASISTENCIA_INICIAL);
+    } catch {
       setAsistencia(ASISTENCIA_INICIAL);
     }
   }, []);
 
-  const saveAndSetAsistencia = (data: AsistenciaRecord[]) => {
-    localStorage.setItem("taniapay_asistencia", JSON.stringify(data));
+  const guardarAsistencia = (data: AsistenciaRecord[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      /* el estado igual se actualiza aunque falle la persistencia */
+    }
     setAsistencia(data);
   };
 
-  // --- AÑADIR REGISTRO ---
-  const agregarNuevoRegistroAsistencia = (id_reloj: string, fecha: string) => {
-    const existe = asistencia.some(r => r.id_reloj === id_reloj && r.fecha === fecha);
-    if (existe) return;
+  // Recalcula un dia con la unica fuente de verdad: calcularIncidencia.
+  const recalcular = (
+    rec: AsistenciaRecord,
+    cambios: Partial<Pick<AsistenciaRecord, "turno" | "entrada" | "salida">>
+  ): AsistenciaRecord => {
+    const turno = cambios.turno ?? rec.turno;
+    const entrada = cambios.entrada !== undefined ? cambios.entrada : rec.entrada;
+    const salida = cambios.salida !== undefined ? cambios.salida : rec.salida;
+    const calc = calcularIncidencia({
+      turno,
+      entrada,
+      salida,
+      esFeriado: FERIADOS_SET.has(rec.fecha),
+    });
+    return { ...rec, turno, entrada, salida, ...calc };
+  };
 
-    const nuevoRegistro: AsistenciaRecord = {
-      id_registro: `${id_reloj}-${fecha}`,
-      id_reloj,
+  const importarArchivo = (texto: string, sucursal: string): ReporteImportacion => {
+    const { registros, reporte } = parsearArchivo(texto, { sucursal, feriados: fechasFeriado() });
+    guardarAsistencia(registros);
+    return reporte;
+  };
+
+  const corregirPonche = (idReloj: string, fecha: string, entrada: string | null, salida: string | null) => {
+    guardarAsistencia(
+      asistencia.map((r) =>
+        r.id_reloj === idReloj && r.fecha === fecha ? recalcular(r, { entrada, salida }) : r
+      )
+    );
+  };
+
+  const actualizarTurno = (idReloj: string, fecha: string, turno: string | null) => {
+    guardarAsistencia(
+      asistencia.map((r) =>
+        r.id_reloj === idReloj && r.fecha === fecha ? recalcular(r, { turno }) : r
+      )
+    );
+  };
+
+  const agregarRegistro = (
+    idReloj: string,
+    fecha: string,
+    turno: string | null,
+    entrada: string | null,
+    salida: string | null
+  ) => {
+    if (asistencia.some((r) => r.id_reloj === idReloj && r.fecha === fecha)) return;
+    const emp = empleados.find((e) => e.id_reloj === idReloj);
+    const calc = calcularIncidencia({ turno, entrada, salida, esFeriado: FERIADOS_SET.has(fecha) });
+    const nuevo: AsistenciaRecord = {
+      id_reloj: idReloj,
       fecha,
-      entrada: "08:00",
-      salida: "17:00",
-      turno: "Matutino",
-      error_reloj: false
+      sucursal: emp?.sucursal_principal ?? "T1",
+      turno,
+      entrada,
+      salida,
+      ...calc,
     };
-    saveAndSetAsistencia([nuevoRegistro, ...asistencia]);
+    guardarAsistencia([nuevo, ...asistencia]);
   };
 
-  // --- ELIMINAR REGISTRO ---
-  const eliminarRegistroAsistencia = (id_compuesto: string) => {
-    const filtradas = asistencia.filter(rec => `${rec.id_reloj}-${rec.fecha}` !== id_compuesto);
-    saveAndSetAsistencia(filtradas);
+  const eliminarRegistro = (idReloj: string, fecha: string) => {
+    guardarAsistencia(asistencia.filter((r) => !(r.id_reloj === idReloj && r.fecha === fecha)));
   };
 
-  // --- ACTUALIZAR TURNO / ESTADO (Lógica de limpieza para Libre/Feriado) ---
-  const actualizarTurnoOEstado = (id_compuesto: string, nuevoEstado: string) => {
-    const actualizadas = asistencia.map((rec) => {
-      if (`${rec.id_reloj}-${rec.fecha}` === id_compuesto) {
-        const esEspecial = nuevoEstado === "LIBRE" || nuevoEstado === "FERIADO";
-        return {
-          ...rec,
-          turno: nuevoEstado,
-          entrada: esEspecial ? "—" : (rec.entrada === "—" ? "08:00" : rec.entrada),
-          salida: esEspecial ? "—" : (rec.salida === "—" ? "17:00" : rec.salida),
-          error_reloj: esEspecial ? false : rec.error_reloj
-        };
-      }
-      return rec;
-    });
-    saveAndSetAsistencia(actualizadas);
-  };
-
-  const corregirPoncheIndividual = (id_compuesto: string, hEntrada: string, hSalida: string) => {
-    const actualizadas = asistencia.map((rec) => {
-      const currentId = `${rec.id_reloj}-${rec.fecha}`;
-      if (currentId === id_compuesto) {
-        return { ...rec, entrada: hEntrada, salida: hSalida, error_reloj: false };
-      }
-      return rec;
-    });
-    saveAndSetAsistencia(actualizadas);
-  };
-
-  const aprobarHorasExtras = (id_compuesto: string) => {
-    const actualizadas = asistencia.map((rec) => {
-      const currentId = `${rec.id_reloj}-${rec.fecha}`;
-      return currentId === id_compuesto ? { ...rec, he_aprobada: true } : rec;
-    });
-    saveAndSetAsistencia(actualizadas);
-  };
-
-  const corregirTodosErroresMasivo = () => {
-    const actualizadas = asistencia.map((rec) => {
-      if (rec.error_reloj) {
-        let hEntrada = rec.entrada && rec.entrada !== "—" ? rec.entrada : "08:00";
-        let hSalida = rec.salida && rec.salida !== "—" ? rec.salida : "17:00";
-        return { ...rec, entrada: hEntrada, salida: hSalida, error_reloj: false };
-      }
-      return rec;
-    });
-    saveAndSetAsistencia(actualizadas);
-  };
+  const actualizarTasas = (tasas: Tasas) => setConfigTasas(tasas);
 
   return (
-    <PayContext.Provider value={{ 
-      activeTab, setActiveTab, empleados, asistencia, incidencias,
-      configTasas, feriados: [], 
-      corregirPoncheIndividual, corregirTodosErroresMasivo, aprobarHorasExtras,
-      agregarNuevoRegistroAsistencia, eliminarRegistroAsistencia, actualizarTurnoOEstado,
-      actualizarConfigTasas: () => {},
-      fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
-      periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
-      periodoFin: CONFIG_SISTEMA.QUINCENA_FIN,
-    }}>
+    <PayContext.Provider
+      value={{
+        activeTab,
+        setActiveTab,
+        empleados,
+        asistencia,
+        incidencias,
+        configTasas,
+        fechaSistema: CONFIG_SISTEMA.FECHA_ACTUAL,
+        periodoInicio: CONFIG_SISTEMA.QUINCENA_INICIO,
+        periodoFin: CONFIG_SISTEMA.QUINCENA_FIN,
+        importarArchivo,
+        corregirPonche,
+        actualizarTurno,
+        agregarRegistro,
+        eliminarRegistro,
+        actualizarTasas,
+      }}
+    >
       {children}
     </PayContext.Provider>
   );

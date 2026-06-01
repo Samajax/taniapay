@@ -1,126 +1,57 @@
-import { AsistenciaRecord, Empleado } from "@/data/mockData";
-
-export interface AsistenciaRefinada extends AsistenciaRecord {
-  sucursal_ponche?: string;
-  incidencia_detectada?: string;
-  nombre_cubre?: string;
-  es_feriado?: boolean;
-  es_dia_libre?: boolean;
-  minutos_tardanza?: number;
-  minutos_extras?: number;
-  requiereConfirmacionHE?: boolean;
-  he_aprobada?: boolean;
-  minutos_penalizados?: number; // Agregamos este campo a la interfaz
-}
-
-export interface EmpleadoAsistenciaGrupal {
-  id_reloj: string;
-  nombre: string;
-  cargo: string;
-  sucursal_principal: string;
-  exento: boolean;
-  totalDescuento: number;
-  totalMinutosPenalizados: number; // Agregamos para el resumen
-  alertasAcumuladas: Set<string>;
-  records: AsistenciaRefinada[];
-}
-
-export const formatMonto = (val: number) => 
-  "RD$ " + val.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export const getAlertaEstilo = (alerta: string): string => {
-  const estilos: Record<string, string> = {
-    "Irregularidad": "bg-red-50 text-red-600 border-red-200 font-semibold",
-    "Ausencia": "bg-rose-50 text-rose-700 border-rose-200 font-bold",
-    "Tardanza": "bg-amber-50 text-amber-700 border-amber-200",
-    "Vacaciones": "bg-blue-50 text-blue-700 border-blue-200",
-    "Licencia Médica": "bg-purple-50 text-purple-700 border-purple-200",
-    "Permiso": "bg-indigo-50 text-indigo-700 border-indigo-200",
-    "HE por Aprobar": "bg-orange-50 text-orange-700 border-orange-200 font-bold",
-    "Correcto": "bg-emerald-50 text-emerald-700 border-emerald-200"
-  };
-  return estilos[alerta] || "bg-slate-50 text-slate-600 border-slate-200";
-};
-
-export function formatNombreTurno(turnoString: string, horaEntrada: string): string {
-  if (turnoString) {
-    const tClean = turnoString.toLowerCase();
-    if (tClean.includes("matutino") || tClean.includes("08:00") || tClean.includes("07:30")) return "Matutino";
-    if (tClean.includes("vespertino") || tClean.includes("14:30") || tClean.includes("15:00")) return "Vespertino";
-  }
-  if (!horaEntrada || horaEntrada === "—") return "Matutino";
-  const [h] = horaEntrada.split(":").map(Number);
-  return h >= 13 ? "Vespertino" : "Matutino";
-}
+// ponches/hooks/useAsistenciaUtils.ts
+// Helpers PUROS del módulo de ponches. Sin lógica de negocio y sin React.
+// La decisión de incidencias y el cálculo de dinero viven en ponches/lib/.
 
 /**
- * LÓGICA DE EXTRACCIÓN DE MINUTOS PENALIZADOS
- * Centralizamos esto para usarlo en el cálculo y en la vista.
+ * "HH:MM" -> minutos desde medianoche.
+ * Devuelve null cuando no hay hora válida ("", "—", null, undefined).
  */
-export const obtenerMinutosPenalizados = (record: AsistenciaRefinada, emp: Empleado | undefined): number => {
-  if (!emp || emp.exento_ponche || record.es_feriado || record.incidencia_detectada) return 0;
-  
-  const parseMins = (h: string) => {
-    if (!h || h === "—") return 0;
-    const [hrs, mins] = h.split(":").map(Number);
-    return hrs * 60 + mins;
-  };
-
-  const tEntradaReal = parseMins(record.entrada_normalizada || "");
-  const tSalidaReal = parseMins(record.salida_normalizada || "");
-  const tEntradaTeo = parseMins(emp.hora_inicio_turno || "08:00");
-  const tSalidaTeo = parseMins(emp.hora_fin_turno || "17:00");
-
-  let mins = 0;
-  // Entrada (Margen 10 min)
-  if (tEntradaReal > tEntradaTeo + 10) mins += (tEntradaReal - tEntradaTeo);
-  // Salida (Margen 10 min)
-  if (tSalidaReal > 0 && tSalidaReal < tSalidaTeo - 10) mins += (tSalidaTeo - tSalidaReal);
-
-  return mins;
-};
-
-/**
- * REGLAS DE NEGOCIO "TANIA PAY" 2026:
- */
-export const calcularDescuentoPonche = (record: AsistenciaRefinada, emp: Empleado | undefined, tasas: any) => {
-  if (!emp || emp.exento_ponche) return 0;
-  const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
-  if (record.incidencia_detectada) return 0;
-
-  // 1. FERIADOS (Pago proporcional)
-  if (record.es_feriado && tienePonche) {
-    const parseMins = (h: string) => h.split(":").map(Number)[0] * 60 + h.split(":").map(Number)[1];
-    const mins = parseMins(record.salida_normalizada || "00:00") - parseMins(record.entrada_normalizada || "00:00");
-    return (mins / 60) * tasas.hora;
+export function parseMinutos(hora: string | null | undefined): number | null {
+    if (!hora || hora === "—" || hora.trim() === "") return null;
+    const [h, m] = hora.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
   }
-
-  // 2. AUSENCIAS
-  if (!tienePonche) {
-    if (record.es_dia_libre || record.es_feriado) return 0;
-    return -tasas.diaTrabajo; 
+  
+  /**
+   * minutos -> texto legible: 75 -> "1h 15m", 40 -> "40m", -20 -> "-20m".
+   */
+  export function minutosATexto(min: number): string {
+    if (!min) return "0m";
+    const signo = min < 0 ? "-" : "";
+    const abs = Math.abs(min);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return `${signo}${h > 0 ? `${h}h ` : ""}${m}m`.trim();
   }
-
-  // 3. INCUMPLIMIENTO (Tardanza + Salida Anticipada)
-  const mins = obtenerMinutosPenalizados(record, emp);
-  return mins > 0 ? -(mins * (tasas.hora / 60)) : 0;
-};
-
-export const obtenerAlertaSimplificada = (record: AsistenciaRefinada, emp: Empleado | undefined) => {
-  if (!emp) return "";
-  if (record.incidencia_detectada) return record.incidencia_detectada;
-  if (record.error_reloj) return "Irregularidad";
   
-  const tienePonche = record.entrada !== "—" && record.entrada !== "" && record.entrada !== undefined;
-  if (!tienePonche) {
-    if (record.es_feriado || record.es_dia_libre) return "";
-    return "Ausencia";
+  /**
+   * Formato de moneda dominicana: 1153.5 -> "RD$ 1,153.50".
+   */
+  export function formatMonto(val: number): string {
+    return (
+      "RD$ " +
+      val.toLocaleString("es-DO", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
   }
-
-  if (record.requiereConfirmacionHE && !record.he_aprobada) return "HE por Aprobar";
   
-  // Usamos la nueva función para determinar si hay alerta de tardanza/salida anticipada
-  if (obtenerMinutosPenalizados(record, emp) > 0) return "Tardanza";
-  
-  return "Correcto";
-};
+  /**
+   * Mapa visual: clases Tailwind por tipo de incidencia.
+   * Es solo presentación; no toma ninguna decisión de negocio.
+   */
+  export function getAlertaEstilo(tipo: string): string {
+    const estilos: Record<string, string> = {
+      "Correcto": "bg-emerald-50 text-emerald-700 border-emerald-200",
+      "Tardanza": "bg-amber-50 text-amber-700 border-amber-200",
+      "Salida Temprana": "bg-orange-50 text-orange-700 border-orange-200",
+      "Ausencia": "bg-rose-50 text-rose-700 border-rose-200 font-bold",
+      "Libre": "bg-slate-50 text-slate-500 border-slate-200",
+      "Feriado": "bg-blue-50 text-blue-700 border-blue-200",
+      "Horario No Configurado": "bg-slate-100 text-slate-600 border-slate-300",
+      "Revisar": "bg-red-50 text-red-600 border-red-200 font-semibold",
+    };
+    return estilos[tipo] || "bg-slate-50 text-slate-600 border-slate-200";
+  }
