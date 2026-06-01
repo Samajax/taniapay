@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { usePay } from "@/context/PayContext";
 import { SUCURSALES_DISPONIBLES } from "@/data/mockData";
-import { Search, AlertTriangle, FileText, DollarSign, Upload, UserX } from "lucide-react";
+import { Search, AlertTriangle, FileText, DollarSign, Upload, UserX, Plus } from "lucide-react";
 
 import { useAsistenciaEnriquecida } from "./hooks/useAsistenciaEnriquecida";
 import { formatMonto } from "./hooks/useAsistenciaUtils";
@@ -12,6 +12,7 @@ import type { ReporteImportacion } from "./lib/parsearArchivo";
 import HistorialPonchesTable from "./subcomponents/HistorialPonchesTable";
 import ResumenAlertasTable from "./subcomponents/ResumenAlertasTable";
 import ExpedienteLateral from "./subcomponents/ExpedienteLateral";
+import NuevoRegistroForm from "./subcomponents/NuevoRegistroForm";
 
 const card = "bg-white border border-slate-100 rounded-2xl shadow-sm transition-all";
 
@@ -24,6 +25,8 @@ export default function PonchesView() {
     importarArchivo,
     corregirPonche,
     eliminarRegistro,
+    actualizarTurno,
+    agregarRegistro,
   } = usePay();
 
   const [filtros, setFiltros] = useState<FiltrosPonches>({
@@ -35,6 +38,7 @@ export default function PonchesView() {
   const [tab, setTab] = useState<"historial" | "resumen">("historial");
   const [selectedIdReloj, setSelectedIdReloj] = useState("");
   const [reporte, setReporte] = useState<ReporteImportacion | null>(null);
+  const [mostrarNuevo, setMostrarNuevo] = useState(false);
 
   const setFiltro = (patch: Partial<FiltrosPonches>) =>
     setFiltros((f) => ({ ...f, ...patch }));
@@ -154,8 +158,28 @@ export default function PonchesView() {
               <Upload className="w-3.5 h-3.5" /> Importar
               <input type="file" accept=".txt,.csv,.tsv" onChange={onImportar} className="hidden" />
             </label>
+            <button
+              onClick={() => setMostrarNuevo((v) => !v)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                mostrarNuevo ? "bg-emerald-100 text-emerald-700" : "bg-emerald-600 text-white hover:bg-emerald-700"
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5" /> Nuevo
+            </button>
           </div>
         </div>
+
+        {/* NUEVO REGISTRO */}
+        {mostrarNuevo && (
+          <NuevoRegistroForm
+            empleados={empleados}
+            onAgregar={(idReloj, fecha, turno, entrada, salida) => {
+              agregarRegistro(idReloj, fecha, turno, entrada, salida);
+              setMostrarNuevo(false);
+            }}
+            onCerrar={() => setMostrarNuevo(false)}
+          />
+        )}
 
         {/* REPORTE DE IMPORTACIÓN */}
         {reporte && (
@@ -207,6 +231,7 @@ export default function PonchesView() {
               setSelectedIdReloj={setSelectedIdReloj}
               onCorregir={corregirPonche}
               onEliminar={eliminarRegistro}
+              onAsignarTurno={actualizarTurno}
             />
           )}
         </div>

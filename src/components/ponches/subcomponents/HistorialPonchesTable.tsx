@@ -1,6 +1,6 @@
 "use client";
 import React, { useMemo, useState } from "react";
-import { Edit3, Trash2, Check, X, UserCheck } from "lucide-react";
+import { Edit3, Trash2, Check, X, UserCheck, Clock } from "lucide-react";
 import { getAlertaEstilo, minutosATexto, formatMonto } from "../hooks/useAsistenciaUtils";
 import { calcularDescuento } from "../lib/calcularDescuento";
 import type { AsistenciaRecord, Empleado, Tasas } from "../types";
@@ -13,6 +13,7 @@ interface Props {
   setSelectedIdReloj: (id: string) => void;
   onCorregir: (idReloj: string, fecha: string, entrada: string | null, salida: string | null) => void;
   onEliminar: (idReloj: string, fecha: string) => void;
+  onAsignarTurno: (idReloj: string, fecha: string, turno: string | null) => void;
 }
 
 const claveFila = (r: AsistenciaRecord) => `${r.id_reloj}|${r.fecha}`;
@@ -25,6 +26,7 @@ export default function HistorialPonchesTable({
   setSelectedIdReloj,
   onCorregir,
   onEliminar,
+  onAsignarTurno,
 }: Props) {
   const empPorId = useMemo(() => {
     const m = new Map<string, Empleado>();
@@ -35,6 +37,23 @@ export default function HistorialPonchesTable({
   const [editId, setEditId] = useState<string | null>(null);
   const [nuevaEntrada, setNuevaEntrada] = useState("");
   const [nuevaSalida, setNuevaSalida] = useState("");
+
+  // Edición independiente del turno (para "Horario No Configurado", etc.)
+  const [turnoEditId, setTurnoEditId] = useState<string | null>(null);
+  const [turnoIni, setTurnoIni] = useState("08:00");
+  const [turnoFin, setTurnoFin] = useState("16:00");
+
+  const iniciarTurno = (r: AsistenciaRecord) => {
+    setTurnoEditId(claveFila(r));
+    const [ini, fin] = (r.turno ?? "08:00-16:00").split("-");
+    setTurnoIni(ini || "08:00");
+    setTurnoFin(fin || "16:00");
+  };
+
+  const guardarTurno = (r: AsistenciaRecord) => {
+    onAsignarTurno(r.id_reloj, r.fecha, `${turnoIni}-${turnoFin}`);
+    setTurnoEditId(null);
+  };
 
   const iniciar = (r: AsistenciaRecord) => {
     setEditId(claveFila(r));
@@ -93,7 +112,51 @@ export default function HistorialPonchesTable({
                   </div>
                 </td>
                 <td className="p-3 font-mono text-slate-500">{r.fecha}</td>
-                <td className="p-3 text-slate-500">{r.turno ?? "Sin turno"}</td>
+                <td className="p-3 text-slate-500">
+                  {turnoEditId === claveFila(r) ? (
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="time"
+                        value={turnoIni}
+                        onChange={(e) => setTurnoIni(e.target.value)}
+                        className="bg-slate-50 border rounded-lg px-1.5 py-1 text-xs outline-none"
+                      />
+                      <span className="text-slate-400">-</span>
+                      <input
+                        type="time"
+                        value={turnoFin}
+                        onChange={(e) => setTurnoFin(e.target.value)}
+                        className="bg-slate-50 border rounded-lg px-1.5 py-1 text-xs outline-none"
+                      />
+                      <button onClick={() => guardarTurno(r)} className="p-1 rounded-lg bg-emerald-100 text-emerald-700">
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setTurnoEditId(null)} className="p-1 rounded-lg bg-slate-100 text-slate-500">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : r.tipo_incidencia === "Horario No Configurado" ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        iniciarTurno(r);
+                      }}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 flex items-center gap-1"
+                    >
+                      <Clock className="w-3 h-3" /> Asignar turno
+                    </button>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        iniciarTurno(r);
+                      }}
+                      className="text-slate-500 hover:text-slate-900 hover:underline decoration-dotted"
+                    >
+                      {r.turno ?? "Sin turno"}
+                    </button>
+                  )}
+                </td>
 
                 {enEdicion ? (
                   <>

@@ -15,6 +15,11 @@ import type {
 } from "../types"; // <-- se crea en el siguiente paso
 import { calcularDescuento } from "../lib/calcularDescuento"; // <-- se crea en ponches/lib
 
+/** Días que necesitan acción humana: ponche raro/incompleto o sin turno configurado. */
+function requiereAtencion(rec: AsistenciaRecord): boolean {
+  return rec.error_reloj || rec.tipo_incidencia === "Horario No Configurado";
+}
+
 /**
  * Devuelve la incidencia de RRHH (vacaciones, licencia, permiso) que cubre
  * ese día, si existe. El cruce es por id_reloj + rango de fechas.
@@ -79,7 +84,7 @@ export function useAsistenciaEnriquecida(params: {
         filtros.sucursal === "Todos" || rec.sucursal === filtros.sucursal;
       const matchFecha =
         filtros.fecha === "Todos" || rec.fecha === filtros.fecha;
-      const matchErrores = !filtros.soloErrores || rec.error_reloj;
+      const matchErrores = !filtros.soloErrores || requiereAtencion(rec);
       return matchSearch && matchSucursal && matchFecha && matchErrores;
     });
   }, [registros, filtros, empleadosPorId]);
@@ -119,7 +124,7 @@ export function useAsistenciaEnriquecida(params: {
   // 4) MÉTRICAS de las tarjetas superiores (sobre todo, antes de filtrar).
   const metricas = useMemo<MetricasPonches>(() => {
     return {
-      errores: registros.filter((r) => r.error_reloj).length,
+      errores: registros.filter(requiereAtencion).length,
       ausencias: registros.filter((r) => r.tipo_incidencia === "Ausencia").length,
       impactoNomina: grupos.reduce((acc, g) => acc + g.totalDescuento, 0),
     };
