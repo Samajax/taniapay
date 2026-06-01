@@ -6,7 +6,7 @@ import { parseMinutos } from "../hooks/useAsistenciaUtils";
 import type { TipoIncidencia } from "../types"; // <-- se crea en el siguiente paso
 
 // --- POLÍTICA (ajustable; podría vivir en configTasas más adelante) ---
-const TOLERANCIA_MIN = 10; // minutos de gracia para tardanza / salida temprana
+export const TOLERANCIA_MIN = 10; // minutos de gracia para tardanza / salida temprana
 const MAX_DESVIO_MIN = 240; // desvío > 4h = no es real, es turno cruzado / anomalía
 
 export interface ResultadoIncidencia {

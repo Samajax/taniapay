@@ -1,12 +1,14 @@
 "use client";
 import React, { useMemo, useState } from "react";
 import { Edit3, Trash2, Check, X, UserCheck } from "lucide-react";
-import { getAlertaEstilo, minutosATexto } from "../hooks/useAsistenciaUtils";
-import type { AsistenciaRecord, Empleado } from "../types";
+import { getAlertaEstilo, minutosATexto, formatMonto } from "../hooks/useAsistenciaUtils";
+import { calcularDescuento } from "../lib/calcularDescuento";
+import type { AsistenciaRecord, Empleado, Tasas } from "../types";
 
 interface Props {
   registros: AsistenciaRecord[];
   empleados: Empleado[];
+  tasas: Tasas;
   selectedIdReloj: string;
   setSelectedIdReloj: (id: string) => void;
   onCorregir: (idReloj: string, fecha: string, entrada: string | null, salida: string | null) => void;
@@ -18,6 +20,7 @@ const claveFila = (r: AsistenciaRecord) => `${r.id_reloj}|${r.fecha}`;
 export default function HistorialPonchesTable({
   registros,
   empleados,
+  tasas,
   selectedIdReloj,
   setSelectedIdReloj,
   onCorregir,
@@ -65,6 +68,7 @@ export default function HistorialPonchesTable({
             <th className="p-3 border-b">Salida</th>
             <th className="p-3 border-b">Incidencia</th>
             <th className="p-3 border-b">Desfase</th>
+            <th className="p-3 border-b text-right">Monto</th>
             <th className="p-3 pr-6 border-b text-right">Acciones</th>
           </tr>
         </thead>
@@ -73,6 +77,7 @@ export default function HistorialPonchesTable({
             const emp = empPorId.get(r.id_reloj);
             const enEdicion = editId === claveFila(r);
             const seleccionado = selectedIdReloj === r.id_reloj;
+            const monto = emp ? calcularDescuento(r, emp, tasas) : 0;
             return (
               <tr
                 key={claveFila(r)}
@@ -136,6 +141,17 @@ export default function HistorialPonchesTable({
                     <span className="text-orange-600">-{minutosATexto(r.salida_temprana_minutos)} antes</span>
                   )}
                   {r.retraso_minutos === 0 && r.salida_temprana_minutos === 0 && "—"}
+                </td>
+
+                <td className="p-3 text-right font-mono font-bold text-xs">
+                  {!emp || monto === 0 ? (
+                    <span className="text-slate-300">—</span>
+                  ) : (
+                    <span className={monto < 0 ? "text-rose-600" : "text-emerald-600"}>
+                      {monto < 0 ? "−" : "+"}
+                      {formatMonto(Math.abs(monto))}
+                    </span>
+                  )}
                 </td>
 
                 <td className="p-3 pr-6 text-right" onClick={(e) => e.stopPropagation()}>

@@ -71,6 +71,8 @@ export interface Empleado {
     retraso_minutos: number;
     salida_temprana_minutos: number;
     error_reloj: boolean;
+    /** Horas extras APROBADAS de ese día, en minutos. Solo suma si alguien la aprobó. */
+    horas_extras_aprobadas_min?: number;
   }
   
   // ───────────────────────── Vista ─────────────────────────

@@ -202,6 +202,7 @@ export default function PonchesView() {
             <HistorialPonchesTable
               registros={registrosFiltrados}
               empleados={empleados}
+              tasas={configTasas}
               selectedIdReloj={selectedIdReloj}
               setSelectedIdReloj={setSelectedIdReloj}
               onCorregir={corregirPonche}
