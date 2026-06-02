@@ -2,11 +2,11 @@
 import React, { useMemo, useState } from "react";
 import { usePay } from "@/context/PayContext";
 import { SUCURSALES_DISPONIBLES } from "@/data/mockData";
-import { Search, AlertTriangle, FileText, DollarSign, Upload, UserX, Plus } from "lucide-react";
+import { Search, AlertTriangle, FileText, TrendingDown, TrendingUp, Upload, Plus } from "lucide-react";
 
 import { useAsistenciaEnriquecida } from "./hooks/useAsistenciaEnriquecida";
 import { formatMonto } from "./hooks/useAsistenciaUtils";
-import type { FiltrosPonches } from "./types";
+import type { FiltrosPonches, AgruparPor } from "./types";
 import type { ReporteImportacion } from "./lib/parsearArchivo";
 
 import HistorialPonchesTable from "./subcomponents/HistorialPonchesTable";
@@ -39,6 +39,7 @@ export default function PonchesView() {
   const [selectedIdReloj, setSelectedIdReloj] = useState("");
   const [reporte, setReporte] = useState<ReporteImportacion | null>(null);
   const [mostrarNuevo, setMostrarNuevo] = useState(false);
+  const [agruparPor, setAgruparPor] = useState<AgruparPor>("ninguno");
 
   const setFiltro = (patch: Partial<FiltrosPonches>) =>
     setFiltros((f) => ({ ...f, ...patch }));
@@ -94,26 +95,30 @@ export default function PonchesView() {
           <div className={`${card} p-5 flex items-center justify-between`}>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Ausencias
+                Descuentos
               </span>
-              <span className="text-2xl font-black text-amber-500 block">{metricas.ausencias}</span>
+              <span className="text-xl font-mono font-black text-rose-600 block">
+                {metricas.descuentos === 0
+                  ? "RD$ 0.00"
+                  : "−" + formatMonto(Math.abs(metricas.descuentos))}
+              </span>
             </div>
-            <div className="bg-amber-50 p-2.5 rounded-xl text-amber-500">
-              <UserX className="w-5 h-5" />
+            <div className="bg-rose-50 p-2.5 rounded-xl text-rose-600">
+              <TrendingDown className="w-5 h-5" />
             </div>
           </div>
 
           <div className="bg-slate-900 p-5 rounded-2xl shadow-lg flex items-center justify-between text-white">
             <div>
               <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                Impacto en Nómina
+                Extras y Feriados
               </span>
               <span className="text-xl font-mono font-bold block text-emerald-400">
-                {formatMonto(metricas.impactoNomina)}
+                {metricas.sumas === 0 ? "RD$ 0.00" : "+" + formatMonto(metricas.sumas)}
               </span>
             </div>
             <div className="bg-white/10 p-2.5 rounded-xl text-emerald-400">
-              <DollarSign className="w-5 h-5" />
+              <TrendingUp className="w-5 h-5" />
             </div>
           </div>
         </div>
@@ -153,6 +158,17 @@ export default function PonchesView() {
                   {f}
                 </option>
               ))}
+            </select>
+            <select
+              value={agruparPor}
+              onChange={(e) => setAgruparPor(e.target.value as AgruparPor)}
+              className="flex-1 sm:w-40 px-3 py-2 bg-slate-50 border rounded-xl text-xs font-bold text-slate-600 cursor-pointer outline-none"
+            >
+              <option value="ninguno">Sin agrupar</option>
+              <option value="sucursal">Agrupar: Farmacia</option>
+              <option value="empleado">Agrupar: Empleado</option>
+              <option value="incidencia">Agrupar: Incidencia</option>
+              <option value="turno">Agrupar: Turno</option>
             </select>
             <label className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-white cursor-pointer flex items-center gap-2 hover:bg-slate-700 transition-all">
               <Upload className="w-3.5 h-3.5" /> Importar
@@ -227,6 +243,7 @@ export default function PonchesView() {
               registros={registrosFiltrados}
               empleados={empleados}
               tasas={configTasas}
+              agruparPor={agruparPor}
               selectedIdReloj={selectedIdReloj}
               setSelectedIdReloj={setSelectedIdReloj}
               onCorregir={corregirPonche}

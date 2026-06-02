@@ -121,14 +121,25 @@ export function useAsistenciaEnriquecida(params: {
     return Array.from(mapa.values());
   }, [registrosFiltrados, empleadosPorId, tasas]);
 
-  // 4) MÉTRICAS de las tarjetas superiores (sobre todo, antes de filtrar).
+  // 4) MÉTRICAS de las tarjetas superiores.
+  //    - errores: global (todo el periodo), para no perder pendientes al filtrar.
+  //    - descuentos / sumas: sobre lo filtrado, separando por signo.
   const metricas = useMemo<MetricasPonches>(() => {
+    let descuentos = 0;
+    let sumas = 0;
+    for (const rec of registrosFiltrados) {
+      const emp = empleadosPorId.get(rec.id_reloj);
+      if (!emp) continue;
+      const m = calcularDescuento(rec, emp, tasas);
+      if (m < 0) descuentos += m;
+      else if (m > 0) sumas += m;
+    }
     return {
       errores: registros.filter(requiereAtencion).length,
-      ausencias: registros.filter((r) => r.tipo_incidencia === "Ausencia").length,
-      impactoNomina: grupos.reduce((acc, g) => acc + g.totalDescuento, 0),
+      descuentos,
+      sumas,
     };
-  }, [registros, grupos]);
+  }, [registros, registrosFiltrados, empleadosPorId, tasas]);
 
   return { registrosFiltrados, grupos, metricas };
 }

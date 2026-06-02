@@ -84,6 +84,8 @@ export interface Empleado {
     soloErrores: boolean;
   }
   
+  export type AgruparPor = "ninguno" | "sucursal" | "empleado" | "incidencia" | "turno";
+  
   export interface GrupoEmpleado {
     id_reloj: string;
     nombre: string;
@@ -97,6 +99,6 @@ export interface Empleado {
   
   export interface MetricasPonches {
     errores: number;
-    ausencias: number;
-    impactoNomina: number;
+    descuentos: number; // total negativo (retenciones)
+    sumas: number; // total positivo (feriados trabajados + HE aprobadas)
   }
